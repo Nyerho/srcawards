@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SRC Student Week Awards 2026 Candidates</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="tailwind.css">
+</head>
+
+<body class="mciu-theme min-h-screen">
+
+<header class="bg-white shadow">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+    <div class="flex items-center justify-center sm:justify-start gap-3">
+      <a href="index.html" class="shrink-0" aria-label="Home">
+        <img src="images/mciu%20logo.jpg" alt="SRC Logo" width="40" height="40" class="mciu-logo mciu-brand-img">
+      </a>
+      <h1 class="font-bold text-lg text-center sm:text-left">SRC Student Week Awards 2026</h1>
+    </div>
+    <a href="dashboard.html" class="text-primary text-sm w-full sm:w-auto text-center">Back</a>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+
+  <h2 id="pageTitle" class="text-2xl font-semibold mb-6"></h2>
+
+  <div id="candidatesGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8"></div>
+
+</main>
+
+<!-- MODAL -->
+<div id="voteModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center">
+  <div class="bg-white rounded-xl p-6 max-w-sm w-full mx-4 text-center">
+    <p id="confirmText" class="mb-6 text-gray-700"></p>
+    <input id="voterName" type="text" class="w-full border px-3 py-2 rounded mb-4" placeholder="Enter your full name">
+    <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
+      <button onclick="closeModal()" class="w-full border py-2 rounded">Cancel</button>
+      <button onclick="submitVote()" class="w-full mciu-btn py-2 rounded">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+try {
+  db.settings({ experimentalForceLongPolling: true, merge: true });
+} catch {}
+
+/* ================== BASIC SETUP ================== */
+
+const params = new URLSearchParams(window.location.search);
+const position = params.get('position');
+if (!position) {
+  window.location.href = 'dashboard.html';
+}
+
+function getInitials(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const first = parts[0]?.[0] ?? '';
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '';
+  return (first + last).toUpperCase() || 'U';
+}
+
+function hashToHue(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  return hash % 360;
+}
+
+function avatarDataUri(name) {
+  const initials = getInitials(name);
+  const hue = hashToHue(String(name || 'User'));
+  const bg = `hsl(${hue} 70% 45%)`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><rect width="256" height="256" rx="128" fill="${bg}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="96" fill="#fff" font-weight="700">${initials}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function normalizePosition(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function safeDocId(value) {
+  return String(value || '').trim().replace(/[\/#?\[\]]/g, '_');
+}
+
+function safeErrorMessage(e) {
+  try {
+    if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) return 'You are offline. Please connect to the internet and try again.';
+    const code = e && e.code ? String(e.code) : '';
+    const msg = e && e.message ? String(e.message) : '';
+    if (msg === 'OFFLINE') return 'You are offline. Please connect to the internet and try again.';
+    if (code && msg) return `${code}: ${msg}`;
+    if (msg) return msg;
+    if (code) return code;
+    return 'Unknown error';
+  } catch {
+    return 'Unknown error';
+  }
+}
+
+const currentUser = JSON.parse(localStorage.getItem('currentUser')) || {};
+if (!currentUser || !currentUser.matric) {
+  window.location.href = 'login.html';
+}
+
+/* ================== LOAD CANDIDATES ================== */
+
+document.getElementById('pageTitle').innerText = `Vote for ${position}`;
+
+const grid = document.getElementById('candidatesGrid');
+let selectedCandidateId = null;
+let selectedCandidateName = null;
+let candidates = [];
+
+function withTimeout(promise, timeoutMs) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
+  ]);
+}
+
+async function getSnapWithTimeout(promise, timeoutMs) {
+  try {
+    const snap = await withTimeout(promise, timeoutMs);
+    return { snap, error: null };
+  } catch (e) {
+    return { snap: null, error: e };
+  }
+}
+
+// Render skeleton cards immediately to avoid perceived delay
+(function renderSkeleton() {
+  grid.innerHTML = '';
+  const count = 6;
+  for (let i = 0; i < count; i++) {
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-xl shadow p-6 text-center animate-pulse';
+    card.innerHTML = `
+      <div class="w-24 h-24 sm:w-32 sm:h-32 mx-auto rounded-full bg-gray-200"></div>
+      <div class="mt-4 h-4 bg-gray-200 rounded mx-auto" style="width: 60%"></div>
+      <div class="mt-2 h-4 bg-gray-200 rounded mx-auto" style="width: 40%"></div>
+      <button class="mt-6 w-full border bg-gray-200 text-transparent py-2 rounded" disabled>Vote</button>
+    `;
+    grid.appendChild(card);
+  }
+})();
+
+async function loadElectionAndCandidates() {
+  const positionKey = normalizePosition(position);
+
+  if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
+    throw new Error('OFFLINE');
+  }
+
+  let voterSnap = null;
+  let electionSnap = null;
+  let byKeySnap = null;
+  let legacySnap = null;
+  let candidatesErr = null;
+
+  {
+    const [voterRes, electionRes, byKeyRes, legacyRes] = await Promise.all([
+      getSnapWithTimeout(db.collection('voters').doc(safeDocId(String(currentUser?.matric || '').toUpperCase())).get(), 12000),
+      getSnapWithTimeout(db.collection('election').doc('current').get(), 12000),
+      getSnapWithTimeout(db.collection('candidates').where('positionKey', '==', positionKey).get(), 20000),
+      getSnapWithTimeout(db.collection('candidates').where('position', '==', position).get(), 20000)
+    ]);
+
+    voterSnap = voterRes.snap;
+    electionSnap = electionRes.snap;
+    byKeySnap = byKeyRes.snap;
+    legacySnap = legacyRes.snap;
+    candidatesErr = byKeyRes.error || legacyRes.error || null;
+
+    if (!byKeySnap && !legacySnap && String(byKeyRes.error?.message || '') === 'timeout' && String(legacyRes.error?.message || '') === 'timeout') {
+      grid.innerHTML = `
+        <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
+          <h3 class="font-semibold text-lg">Still connecting…</h3>
+          <p class="text-gray-600 mt-1">Your network is slow or blocking Firebase. Retrying…</p>
+        </div>
+      `;
+      const [byKeyRes2, legacyRes2] = await Promise.all([
+        getSnapWithTimeout(db.collection('candidates').where('positionKey', '==', positionKey).get(), 35000),
+        getSnapWithTimeout(db.collection('candidates').where('position', '==', position).get(), 35000)
+      ]);
+      byKeySnap = byKeyRes2.snap;
+      legacySnap = legacyRes2.snap;
+      candidatesErr = byKeyRes2.error || legacyRes2.error || candidatesErr;
+    }
+  }
+
+  if (voterSnap && voterSnap.exists) {
+    const voter = voterSnap.data() || {};
+    if (voter.completedAt) {
+      localStorage.removeItem('currentUser');
+      alert('This matric number has already completed voting and cannot login again.');
+      window.location.href = 'login.html';
+      return;
+    }
+  }
+
+  let election = null;
+  if (electionSnap && electionSnap.exists) {
+    election = electionSnap.data();
+  } else {
+    election = { status: 'active', positions: [position] };
+  }
+
+  if (!election || election.status !== 'active') {
+    alert('Election is not active');
+    window.location.href = 'dashboard.html';
+    return;
+  }
+
+  const positions = Array.isArray(election.positions) ? election.positions : [];
+  const validPosition = positions.some(p => String(p).toLowerCase() === String(position).toLowerCase());
+  if (!validPosition) {
+    alert('Invalid position');
+    window.location.href = 'dashboard.html';
+    return;
+  }
+
+  const list = [];
+  if (byKeySnap && !byKeySnap.empty) {
+    byKeySnap.forEach(d => {
+      const c = d.data() || {};
+      list.push({
+        id: d.id,
+        name: c.name || '',
+        position: c.position || position,
+        image: c.image || null,
+        votes: c.votes ?? 0
+      });
+    });
+  }
+  if (!list.length && legacySnap && !legacySnap.empty) {
+    legacySnap.forEach(d => {
+      const c = d.data() || {};
+      list.push({
+        id: d.id,
+        name: c.name || '',
+        position: c.position || position,
+        image: c.image || null,
+        votes: c.votes ?? 0
+      });
+    });
+  }
+
+  list.sort((a, b) => a.name.localeCompare(b.name));
+  candidates = list;
+
+  grid.innerHTML = '';
+  if (!byKeySnap && !legacySnap) {
+    const allRes = await getSnapWithTimeout(db.collection('candidates').get(), 30000);
+    const allSnap = allRes.snap;
+    if (allSnap) {
+      const fallback = [];
+      allSnap.forEach((d) => {
+        const c = d.data() || {};
+        const key = normalizePosition(c.positionKey || c.position);
+        if (key !== positionKey) return;
+        fallback.push({
+          id: d.id,
+          name: c.name || '',
+          position: c.position || position,
+          image: c.image || null,
+          votes: c.votes ?? 0
+        });
+      });
+      fallback.sort((a, b) => a.name.localeCompare(b.name));
+      candidates = fallback;
+      if (candidates.length) {
+        grid.innerHTML = '';
+      } else {
+        grid.innerHTML = `
+          <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
+            <h3 class="font-semibold text-lg">No nominated candidates yet</h3>
+            <p class="text-gray-600 mt-1">The admin has not added nominees for ${position}.</p>
+            <a href="dashboard.html" class="inline-block mt-4 text-primary">Back to positions</a>
+          </div>
+        `;
+        return;
+      }
+    } else {
+    grid.innerHTML = `
+        <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
+          <h3 class="font-semibold text-lg">Could not load candidates</h3>
+          <p class="text-gray-600 mt-1">${safeErrorMessage(candidatesErr || allRes.error || new Error('timeout'))}</p>
+          <button class="mt-4 mciu-btn px-5 py-2 rounded" onclick="window.location.reload()">Retry</button>
+        </div>
+      `;
+      return;
+    }
+  }
+  if (!candidates.length) {
+    grid.innerHTML = `
+      <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
+        <h3 class="font-semibold text-lg">No nominated candidates yet</h3>
+        <p class="text-gray-600 mt-1">The admin has not added nominees for ${position}.</p>
+        <a href="dashboard.html" class="inline-block mt-4 text-primary">Back to positions</a>
+      </div>
+    `;
+    return;
+  }
+  candidates.forEach(candidate => {
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-xl shadow p-6 text-center mciu-card transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg';
+    const image = candidate.image || avatarDataUri(candidate.name);
+
+    card.innerHTML = `
+      <img src="${image}" loading="lazy" class="w-24 h-24 sm:w-32 sm:h-32 mx-auto rounded-full object-cover">
+      <h3 class="mt-4 font-semibold">${candidate.name}</h3>
+      <button class="mt-6 w-full mciu-btn py-2 rounded">
+        Vote
+      </button>
+    `;
+
+    card.querySelector('button').onclick = () => confirmVote(candidate.id);
+    grid.appendChild(card);
+  });
+}
+
+loadElectionAndCandidates().catch((e) => {
+  grid.innerHTML = `
+    <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
+      <h3 class="font-semibold text-lg">Could not load candidates</h3>
+      <p class="text-gray-600 mt-1">${safeErrorMessage(e)}</p>
+      <button class="mt-4 mciu-btn px-5 py-2 rounded" onclick="window.location.reload()">Retry</button>
+    </div>
+  `;
+});
+
+/* ================== VOTING ================== */
+
+function confirmVote(id) {
+  selectedCandidateId = id;
+  selectedCandidateName = candidates.find(c => c.id === id)?.name || '';
+  document.getElementById('confirmText').innerText =
+    `You are about to vote for this candidate as ${position}`;
+  requestAnimationFrame(() => {
+    const nameInput = document.getElementById('voterName');
+    try {
+      const u = JSON.parse(localStorage.getItem('currentUser') || 'null');
+      if (u && u.name && nameInput) nameInput.value = String(u.name);
+    } catch {}
+    document.getElementById('voteModal').classList.remove('hidden');
+    document.getElementById('voteModal').classList.add('flex');
+  });
+}
+
+window.closeModal = function () {
+  document.getElementById('voteModal').classList.add('hidden');
+  document.getElementById('voteModal').classList.remove('flex');
+};
+
+window.submitVote = function () {
+  if (!selectedCandidateId) return;
+
+  const matric = String(currentUser?.matric || '').trim().toUpperCase();
+  if (!matric) {
+    alert('Enter your matric number');
+    window.location.href = 'login.html';
+    return;
+  }
+  if (!matric.startsWith('NS')) {
+    alert('Only Faculty of Natural & Applied Sciences students can vote. Matric number must start with NS');
+    window.location.href = 'login.html';
+    return;
+  }
+
+  (async () => {
+    const positionKey = normalizePosition(position);
+    const safeMatric = matric.replace(/[\/#?\[\]]/g, '_');
+    const safePositionKey = positionKey.replace(/[\/#?\[\]]/g, '_');
+    const voteId = `${safeMatric}_${safePositionKey}`;
+    const voteRef = db.collection('votes').doc(voteId);
+    const legacyVoteId = `${safeMatric}_${position.replace(/[\/#?\[\]]/g, '_')}`;
+    const legacyVoteRef = legacyVoteId === voteId ? null : db.collection('votes').doc(legacyVoteId);
+    const candidateRef = db.collection('candidates').doc(selectedCandidateId);
+    const voterName = String(document.getElementById('voterName')?.value || '').trim().replace(/\s+/g, ' ');
+    if (!voterName) throw new Error('Enter your name to continue');
+    try {
+      const u = JSON.parse(localStorage.getItem('currentUser') || 'null') || {};
+      u.name = voterName;
+      localStorage.setItem('currentUser', JSON.stringify(u));
+    } catch {}
+    try {
+      await db.collection('voters').doc(safeDocId(matric)).set({
+        matric,
+        faculty: 'NS',
+        name: voterName,
+        lastLoginAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch {}
+
+    await db.runTransaction(async (tx) => {
+      const existingVote = await tx.get(voteRef);
+      if (existingVote.exists) throw new Error('ALREADY_VOTED');
+      if (legacyVoteRef) {
+        const legacyExisting = await tx.get(legacyVoteRef);
+        if (legacyExisting.exists) throw new Error('ALREADY_VOTED');
+      }
+
+      const candidateSnap = await tx.get(candidateRef);
+      if (!candidateSnap.exists) throw new Error('CANDIDATE_MISSING');
+
+      const currentVotes = candidateSnap.data()?.votes ?? 0;
+      tx.update(candidateRef, { votes: currentVotes + 1 });
+      tx.set(voteRef, {
+        matric,
+        voterName,
+        position,
+        positionKey,
+        candidateId: selectedCandidateId,
+        candidateName: selectedCandidateName,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    window.location.href = 'dashboard.html';
+  })().catch((err) => {
+    if (String(err?.message || '') === 'ALREADY_VOTED') {
+      alert('You already voted for this position');
+      return;
+    }
+    const code = err && err.code ? String(err.code) : '';
+    const msg = err && err.message ? String(err.message) : '';
+    alert(code && msg ? `${code}: ${msg}` : (msg || 'Could not submit vote. Please try again.'));
+  });
+};
+</script>
+
+</body>
+</html>

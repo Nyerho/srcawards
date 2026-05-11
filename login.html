@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SRC Student Week Awards 2026 Login | Voting Portal</title>
+
+<link rel="stylesheet" href="tailwind.css">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+<style>
+.fade-in { animation: fadeIn 0.6s ease-in-out; }
+@keyframes fadeIn { from {opacity:0; transform:translateY(10px);} to {opacity:1; transform:translateY(0);} }
+</style>
+</head>
+
+<body class="mciu-theme min-h-screen flex items-center justify-center px-4 py-10">
+
+<div class="bg-white w-full max-w-md rounded-2xl shadow-lg p-6 sm:p-8 fade-in">
+
+  <!-- Header -->
+  <div class="text-center mb-8">
+    <a href="index.html" class="inline-flex" aria-label="Home">
+      <img src="images/mciu%20logo.jpg" alt="SRC Logo" width="56" height="56" class="mciu-logo mciu-brand-img" style="width:56px;height:56px">
+    </a>
+    <h1 class="mt-4 text-2xl font-semibold">SRC Student Week Awards 2026 Login</h1>
+    <p class="text-sm text-gray-500">Student Representative Council (SRC)</p>
+  </div>
+
+  <!-- Login Form -->
+  <form class="space-y-5">
+
+    <!-- Matric Number -->
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Matric Number (NS)</label>
+      <input type="text" id="matric" placeholder="e.g. NS/CS/24/0936" required
+        class="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
+    </div>
+
+    <!-- Password with eye toggle -->
+    <div id="adminPasswordWrap" class="relative hidden">
+      <label class="block text-sm font-medium text-gray-700 mb-1">Password (Admin only)</label>
+      <input type="password" id="password" placeholder="••••••••"
+        class="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary pr-10" />
+      <button type="button" id="togglePassword" class="absolute inset-y-0 right-3 flex items-center text-gray-500">
+        <svg id="eyeIcon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Info -->
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-gray-500">NS students only • One vote</span>
+      <a href="#" class="text-primary hover:underline">Forgot password?</a>
+    </div>
+
+    <!-- Login Button -->
+    <button type="submit" class="w-full mciu-btn py-3 rounded-lg text-lg transition">Login & Proceed</button>
+
+  </form>
+
+  <p class="mt-8 text-center text-xs text-gray-500">Authorized by the SRC Body</p>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+try {
+  db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+} catch {}
+
+const ADMIN_EMAIL = 'admin@srcstudentweekawards.com';
+
+const form = document.querySelector('form');
+const matricInput = document.getElementById('matric');
+const adminPasswordWrap = document.getElementById('adminPasswordWrap');
+const passwordInput = document.getElementById('password');
+const togglePassword = document.getElementById('togglePassword');
+const eyeIcon = document.getElementById('eyeIcon');
+const submitBtn = document.querySelector('button[type="submit"]');
+function resetSubmit() {
+  submitBtn.disabled = false;
+  submitBtn.classList.remove('opacity-50', 'pointer-events-none');
+  submitBtn.innerText = 'Login & Proceed';
+}
+function navigate(path) {
+  try {
+    window.location.assign(path);
+  } catch {}
+  setTimeout(() => {
+    // fallback in case navigation is blocked
+    resetSubmit();
+  }, 2000);
+}
+
+function safeDocId(value) {
+  return String(value || '').trim().replace(/[\/#?\[\]]/g, '_');
+}
+
+matricInput.addEventListener('input', () => {
+  const v = String(matricInput.value || '').trim().toLowerCase();
+  if (v === ADMIN_EMAIL.toLowerCase()) {
+    adminPasswordWrap.classList.remove('hidden');
+    passwordInput.focus();
+  } else {
+    adminPasswordWrap.classList.add('hidden');
+    passwordInput.value = '';
+    passwordInput.type = 'password';
+  }
+});
+
+togglePassword.addEventListener('click', () => {
+  if (adminPasswordWrap.classList.contains('hidden')) return;
+  const isHidden = passwordInput.type === 'password';
+  passwordInput.type = isHidden ? 'text' : 'password';
+  eyeIcon.innerHTML = isHidden
+    ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18"/>'
+    : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>';
+});
+
+/* ===== SUBMIT ===== */
+form.addEventListener('submit', e => {
+  e.preventDefault();
+
+  const matric = matricInput.value.trim();
+  const password = passwordInput.value.trim();
+  submitBtn.disabled = true;
+  submitBtn.classList.add('opacity-50', 'pointer-events-none');
+  submitBtn.innerText = 'Processing...';
+
+  // clear previous session
+  localStorage.removeItem('currentUser');
+  try { auth.signOut(); } catch {}
+
+  /* ===== ADMIN ===== */
+  if (matric.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+    (async () => {
+      if (!password) {
+        alert('Enter admin password');
+        resetSubmit();
+        return;
+      }
+      const cred = await auth.signInWithEmailAndPassword(ADMIN_EMAIL, password);
+      const uid = cred?.user?.uid || '';
+      localStorage.setItem('currentUser', JSON.stringify({
+        matric: 'ADMIN',
+        role: 'admin',
+        uid
+      }));
+      navigate('admin.html');
+    })().catch((e) => {
+      alert(e?.message || 'Admin login failed');
+      resetSubmit();
+    });
+    return;
+  }
+
+  /* ===== STUDENT ===== */
+  if (!matric) {
+    alert('Enter your matric number');
+    resetSubmit();
+    return;
+  }
+
+  const normalizedMatric = matric.replace(/\s+/g, '').toUpperCase();
+  const matricRegex = /^NS[\/-]?[A-Z0-9\/-]{2,}$/i;
+
+  if (!matricRegex.test(normalizedMatric)) {
+    alert('Only Faculty of Natural & Applied Sciences students can vote. Matric number must start with NS');
+    resetSubmit();
+    return;
+  }
+
+  // Fast path: set session and navigate immediately
+  localStorage.setItem('currentUser', JSON.stringify({
+    matric: normalizedMatric,
+    role: 'student'
+  }));
+  navigate('dashboard.html');
+  // Best-effort registration, non-blocking
+  setTimeout(async () => {
+    try {
+      const voterRef = db.collection('voters').doc(safeDocId(normalizedMatric));
+      const now = firebase.firestore.FieldValue.serverTimestamp();
+      await voterRef.set({
+        matric: normalizedMatric,
+        faculty: 'NS',
+        createdAt: now,
+        lastLoginAt: now,
+        completedAt: null
+      }, { merge: true });
+    } catch {}
+  }, 200);
+});
+</script>
+
+
+</body>
+</html>

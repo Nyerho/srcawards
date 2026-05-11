@@ -1,0 +1,125 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isNonEmptyString(v, maxLen) {
+      return v is string && v.size() > 0 && v.size() <= maxLen;
+    }
+
+    function isStatus(v) {
+      return v == 'active' || v == 'closed';
+    }
+
+    function isPositionKey(v) {
+      return v is string && v.size() > 0 && v.size() <= 80 && v.matches('^[a-z0-9 ]+$');
+    }
+
+    function isNameKey(v) {
+      return v is string && v.size() > 0 && v.size() <= 120;
+    }
+
+    function isPositionsList(v) {
+      return v is list && v.size() > 0 && v.size() <= 50 && v[0] is string;
+    }
+
+    match /election/current {
+      allow read: if true;
+      allow create, update, delete: if
+        isAdmin() &&
+        request.resource.data.keys().hasOnly(['status', 'positions']) &&
+        isStatus(request.resource.data.status) &&
+        isPositionsList(request.resource.data.positions);
+    }
+
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create, update, delete: if false;
+    }
+
+    match /candidates/{candidateId} {
+      allow read: if true;
+
+      allow create: if
+        isAdmin() &&
+        request.resource.data.keys().hasOnly(['name', 'nameKey', 'position', 'positionKey', 'image', 'votes', 'createdAt']) &&
+        isNonEmptyString(request.resource.data.name, 120) &&
+        isNameKey(request.resource.data.nameKey) &&
+        isNonEmptyString(request.resource.data.position, 120) &&
+        isPositionKey(request.resource.data.positionKey) &&
+        request.resource.data.image is string &&
+        request.resource.data.image.size() <= 900000 &&
+        request.resource.data.votes is number &&
+        request.resource.data.votes >= 0;
+
+      allow update: if
+        (
+          isAdmin() &&
+          request.resource.data.keys().hasOnly(['name', 'nameKey', 'position', 'positionKey', 'image', 'votes', 'createdAt']) &&
+          isNonEmptyString(request.resource.data.name, 120) &&
+          isNameKey(request.resource.data.nameKey) &&
+          isNonEmptyString(request.resource.data.position, 120) &&
+          isPositionKey(request.resource.data.positionKey) &&
+          request.resource.data.image is string &&
+          request.resource.data.image.size() <= 900000 &&
+          request.resource.data.votes is number &&
+          request.resource.data.votes >= 0
+        ) || (
+          request.resource.data.keys().hasOnly(['name', 'nameKey', 'position', 'positionKey', 'image', 'votes', 'createdAt']) &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(['votes']) &&
+          request.resource.data.name == resource.data.name &&
+          request.resource.data.nameKey == resource.data.nameKey &&
+          request.resource.data.position == resource.data.position &&
+          request.resource.data.positionKey == resource.data.positionKey &&
+          request.resource.data.image == resource.data.image &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.votes is number &&
+          request.resource.data.votes == resource.data.votes + 1
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    match /votes/{voteId} {
+      allow read: if true;
+
+      allow create: if
+        request.resource.data.keys().hasOnly(['matric', 'voterName', 'position', 'positionKey', 'candidateId', 'candidateName', 'createdAt']) &&
+        isNonEmptyString(request.resource.data.matric, 40) &&
+        request.resource.data.matric.matches('^NS.*') &&
+        isNonEmptyString(request.resource.data.voterName, 120) &&
+        isNonEmptyString(request.resource.data.position, 120) &&
+        isPositionKey(request.resource.data.positionKey) &&
+        voteId.matches('^[^/]+$') &&
+        isNonEmptyString(request.resource.data.candidateId, 200) &&
+        request.resource.data.candidateName is string &&
+        request.resource.data.candidateName.size() <= 120;
+
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /voters/{voterId} {
+      allow read: if true;
+
+      allow create, update: if
+        request.resource.data.keys().hasOnly(['matric', 'faculty', 'name', 'createdAt', 'lastLoginAt', 'completedAt']) &&
+        isNonEmptyString(request.resource.data.matric, 40) &&
+        request.resource.data.matric.matches('^NS.*') &&
+        voterId.matches('^[^/]+$') &&
+        request.resource.data.faculty == 'NS' &&
+        (
+          !('name' in request.resource.data) ||
+          isNonEmptyString(request.resource.data.name, 120)
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

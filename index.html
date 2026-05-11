@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SRC Student Week Awards 2026 Voting Portal</title>
+
+<link rel="stylesheet" href="tailwind.css">
+
+<style>
+.fade-in {
+  animation: fadeIn 0.6s ease-in-out;
+}
+@keyframes fadeIn {
+  from {opacity:0; transform:translateY(10px);}
+  to {opacity:1; transform:translateY(0);}
+}
+</style>
+</head>
+<body class="mciu-theme text-gray-800">
+
+<!-- HEADER -->
+<header class="bg-white shadow-sm">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+    <div class="flex items-center gap-3">
+      <a href="index.html" class="shrink-0" aria-label="Home">
+        <img src="images/mciu%20logo.jpg" alt="SRC Logo" width="40" height="40" class="mciu-logo mciu-brand-img">
+      </a>
+      <div>
+        <h1 class="text-lg font-semibold">SRC Student Week Awards 2026</h1>
+        <p class="text-xs text-gray-500">Student Representative Council (SRC)</p>
+      </div>
+    </div>
+    <a href="login.html" class="mciu-btn px-5 py-2 rounded-lg transition w-full sm:w-auto text-center">Login</a>
+  </div>
+</header>
+
+<!-- HERO SECTION -->
+<section class="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-20 grid md:grid-cols-2 gap-10 sm:gap-12 items-center">
+
+  <!-- Text -->
+  <div class="bg-white rounded-xl shadow p-6 fade-in mciu-card">
+    <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 leading-tight">
+      Student Week Awards <br>
+      <span class="text-primary">Voting (2026)</span>
+    </h2>
+    <p class="mt-6 text-gray-600 text-lg">
+      A secure, transparent, and easy-to-use voting platform for the SRC Student Week Awards 2026.
+    </p>
+    <div class="mt-8 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+      <a href="login.html" id="proceedBtn" class="mciu-btn px-6 py-3 rounded-lg text-lg transition w-full sm:w-auto text-center">
+        Proceed to Vote
+      </a>
+      <span class="text-gray-500 text-sm text-center sm:text-left">One Voter • One Vote</span>
+    </div>
+    <div class="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 text-center">
+      <div class="bg-white rounded-xl p-4 shadow mciu-card">
+        <p class="font-semibold">Secure</p>
+        <p class="text-xs text-gray-500">Encrypted votes</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 shadow mciu-card">
+        <p class="font-semibold">Transparent</p>
+        <p class="text-xs text-gray-500">Fair process</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 shadow mciu-card">
+        <p class="font-semibold">Reliable</p>
+        <p class="text-xs text-gray-500">SRC managed</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Visual Card -->
+  <div class="bg-white rounded-2xl shadow-lg p-6 sm:p-10 fade-in mciu-card">
+    <h3 class="text-xl font-semibold mb-4">Voting Status</h3>
+    <div class="space-y-4">
+      <div class="flex justify-between">
+        <span class="text-gray-600">Event:</span>
+        <span class="font-medium">Student Week Awards 2026</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-gray-600">Status:</span>
+        <span id="statusText" class="font-semibold"></span>
+      </div>
+    </div>
+    <a href="login.html" id="statusBtn"
+       class="block text-center mt-8 bg-primary text-white py-3 rounded-lg hover:bg-blue-900 transition">
+      Vote Now
+    </a>
+  </div>
+
+</section>
+
+<!-- FOOTER -->
+<footer class="bg-white border-t">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 text-center text-sm text-gray-500">
+    © 2026 Student Representative Council (SRC) • Student Week Awards.
+  </div>
+</footer>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+try {
+  db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+} catch {}
+
+function applyStatus(electionStatus) {
+  const statusEl = document.getElementById('statusText');
+  const statusBtn = document.getElementById('statusBtn');
+  const proceedBtn = document.getElementById('proceedBtn');
+
+  if(electionStatus === 'active'){
+    statusEl.innerText = 'Active';
+    statusEl.className = 'text-green-600 font-semibold';
+    statusBtn.href = 'login.html';
+    proceedBtn.href = 'login.html';
+  } else {
+    statusEl.innerText = 'Closed';
+    statusEl.className = 'text-red-600 font-semibold';
+    statusBtn.classList.add('opacity-50', 'pointer-events-none', 'bg-gray-400');
+    proceedBtn.classList.add('opacity-50', 'pointer-events-none', 'bg-gray-400');
+  }
+}
+
+async function loadStatus() {
+  let electionStatus = 'closed';
+  try {
+    const snap = await db.collection('election').doc('current').get();
+    const d = snap.exists ? snap.data() : null;
+    if (d && (d.status === 'active' || d.status === 'closed')) {
+      electionStatus = d.status;
+      localStorage.setItem('electionStatus', electionStatus);
+    }
+  } catch {}
+
+  if (electionStatus !== 'active' && electionStatus !== 'closed') {
+    const legacy = localStorage.getItem('electionStatus');
+    if (legacy === 'active' || legacy === 'closed') electionStatus = legacy;
+  }
+
+  applyStatus(electionStatus);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadStatus();
+});
+</script>
+
+</body>
+</html>

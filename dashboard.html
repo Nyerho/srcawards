@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SRC Student Week Awards 2026 Dashboard | Voting Portal</title>
+
+<link rel="stylesheet" href="tailwind.css">
+
+<style>
+.fade-in { animation: fadeIn 0.6s ease-in-out; }
+@keyframes fadeIn { from {opacity:0; transform:translateY(10px);} to {opacity:1; transform:translateY(0);} }
+</style>
+</head>
+
+<body class="mciu-theme min-h-screen">
+
+<header class="bg-white shadow-sm">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+    <div class="flex items-center gap-3">
+      <a href="index.html" class="shrink-0" aria-label="Home">
+        <img src="images/mciu%20logo.jpg" alt="SRC Logo" width="40" height="40" class="mciu-logo mciu-brand-img">
+      </a>
+      <div>
+        <h1 class="font-semibold">SRC Student Week Awards 2026</h1>
+        <p class="text-xs text-gray-500">Student Representative Council (SRC)</p>
+      </div>
+    </div>
+    <a href="index.html" class="text-sm text-primary hover:underline w-full sm:w-auto text-center">Logout</a>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+  <div class="mb-10">
+    <h2 class="text-2xl font-semibold">Welcome 👋</h2>
+    <p class="text-gray-600">You are eligible to vote in the SRC Student Week Awards 2026.</p>
+  </div>
+
+  <div class="grid md:grid-cols-3 gap-6 mb-12">
+    <div class="bg-white rounded-xl shadow p-6 mciu-card">
+      <p class="text-gray-500 text-sm">Event</p>
+      <h3 class="text-lg font-semibold mt-1">Student Week Awards 2026</h3>
+    </div>
+    <div class="bg-white rounded-xl shadow p-6 mciu-card">
+      <p class="text-gray-500 text-sm">Status</p>
+      <h3 id="votingStatus" class="text-lg font-semibold mt-1 text-green-600">Voting Active</h3>
+    </div>
+    <div class="bg-white rounded-xl shadow p-6 mciu-card">
+      <p class="text-gray-500 text-sm">Voting Progress</p>
+      <h3 id="progressStatus" class="text-lg font-semibold mt-1">Not Voted</h3>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow p-8">
+    <h3 class="text-xl font-semibold mb-6">Award Categories</h3>
+    <div id="positionsList" class="space-y-4 fade-in"></div>
+    <button id="doneVotingBtn" class="hidden mt-6 w-full mciu-btn py-3 rounded-lg text-lg transition">Done Voting</button>
+    <p class="mt-8 text-sm text-gray-500">⚠ Once you vote for a position, it cannot be changed.</p>
+  </div>
+
+</main>
+
+<footer class="bg-white border-t mt-12">
+  <div class="max-w-7xl mx-auto px-6 py-6 text-center text-sm text-gray-500">
+    © 2026 Student Representative Council (SRC) • Student Week Awards.
+  </div>
+</footer>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+try {
+  db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+} catch {}
+
+/* ===== CURRENT USER ===== */
+const currentUser = JSON.parse(localStorage.getItem('currentUser')) || {
+  matric: 'TEMP001'
+};
+
+const defaultPositions = [
+  'MOST CREATIVE',
+  'MOST INFLUENTIAL',
+  'ENTREPRENEUR OF THE YEAR',
+  'BRAND OF THE YEAR',
+  'MOST ACTIVE SRC MEMBER',
+  'FRESHER OF THE YEAR (MALE)',
+  'FRESHER OF THE YEAR (FEMALE)'
+];
+
+const nomineesByPosition = {
+  'MOST CREATIVE': ['Maron', 'Boy TRYBE', 'Nolan', 'Ceejay', 'Khrome AI'],
+  'MOST INFLUENTIAL': ['Albert (DOS)', 'Tee is the Tea', 'Harriet', 'Big Hemsel( Masa Republic)', 'Pretty Ella aka Big Ella'],
+  'ENTREPRENEUR OF THE YEAR': [
+    'Onyibe Joel ( Tech Odyssey, Jbanks Media)',
+    'Eyione Meyiwa ( Luxurious)',
+    'Dolor Ambrose (Mega Cleaning Service, Mega Apparels)',
+    'Esiso Nyerhovwo (Eon)',
+    'Igbinosa Tejiri (Teejay Luxury)',
+    'Akponokan Harriet (Harriet Standard)'
+  ],
+  'BRAND OF THE YEAR': ['Everything Shirt', 'Tech Odyssey', 'Tare’s Glam', 'Scents by Sonya', 'Scents by Gratias', 'Harriet Standard'],
+  'MOST ACTIVE SRC MEMBER': [
+    'Omiagbemi David ( President)',
+    'Aya.O. Nadine ( Vice President)',
+    'Idemive Russell ( Director of Socials)',
+    'Avworhokai. O. Albert ( Director of Sports)',
+    'Olubenga Temitope ( Director of Welfare)',
+    'Eyione Gift ( Financial Secretary)',
+    'Efetobore Josephine ( Treasurer)',
+    'Beroh Elizabeth ( General Secretary)',
+    'Uti.O.Lucy (Assistant General Secretary)',
+    'Anthony Amanda.O. (Fellowship President)',
+    'Okwoho.O. Festus ( Assistant Fellowship President)',
+    'Emevor Oghenekevwe ( PRO)'
+  ],
+  'FRESHER OF THE YEAR (MALE)': ['Eghreobiyare Aaron Ogaga', 'Bryan Ogbuenyi', 'Tamaraodubo-Diwere Derrick', 'Desmond', 'Answer Njika'],
+  'FRESHER OF THE YEAR (FEMALE)': ['Uwadiego Chinedum Victory', 'Ibomo Olivia', 'Christopher Deborah', 'Pereinei Dedefina Success']
+};
+
+const votingStatus = document.getElementById('votingStatus');
+const progress = document.getElementById('progressStatus');
+const positionsList = document.getElementById('positionsList');
+const doneVotingBtn = document.getElementById('doneVotingBtn');
+
+if (!currentUser || !currentUser.matric || currentUser.role !== 'student') {
+  window.location.href = 'login.html';
+}
+if (String(currentUser.matric || '').toUpperCase().startsWith('NS') === false) {
+  window.location.href = 'login.html';
+}
+
+function normalizePosition(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeCandidateName(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function safeDocId(value) {
+  return String(value || '').trim().replace(/[\/#?\[\]]/g, '_');
+}
+
+function getInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? '';
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '';
+  return (first + last).toUpperCase() || 'U';
+}
+
+function hashToHue(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  return hash % 360;
+}
+
+function avatarDataUri(name) {
+  const initials = getInitials(name);
+  const hue = hashToHue(String(name || 'User'));
+  const bg = `hsl(${hue} 70% 45%)`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><rect width="256" height="256" rx="128" fill="${bg}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="96" fill="#fff" font-weight="700">${initials}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function candidateDocId(positionKey, nameKey) {
+  const raw = `${positionKey}__${nameKey}`;
+  return raw.replace(/[\/#?[\]]/g, '_');
+}
+
+async function loadElection() {
+  try {
+    const snap = await db.collection('election').doc('current').get();
+    if (!snap.exists) {
+      try {
+        await db.collection('election').doc('current').set({
+          status: 'active',
+          positions: defaultPositions
+        }, { merge: true });
+      } catch {}
+      return { status: 'active', positions: defaultPositions };
+    }
+    const d = snap.data() || {};
+    const status = d.status === 'active' ? 'active' : 'closed';
+    const positions = Array.isArray(d.positions) && d.positions.length ? d.positions : defaultPositions;
+    if (!Array.isArray(d.positions) || !d.positions.length) {
+      try {
+        await db.collection('election').doc('current').set({
+          status,
+          positions
+        }, { merge: true });
+      } catch {}
+    }
+    return { status, positions };
+  } catch {
+    return { status: 'active', positions: defaultPositions };
+  }
+}
+
+async function loadUserVotes(matric) {
+  try {
+    const snap = await db.collection('votes').where('matric', '==', matric).get();
+    const map = {};
+    snap.forEach(docSnap => {
+      const v = docSnap.data();
+      const key = normalizePosition(v?.positionKey || v?.position);
+      if (key) map[key] = v?.candidateId || true;
+    });
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+async function seedCandidatesIfEmpty(positions, candidateCounts) {
+  for (const position of positions) {
+    const key = normalizePosition(position);
+    const count = candidateCounts?.[key] || 0;
+    if (count > 0) continue;
+    try {
+      const base = nomineesByPosition[position] || [];
+      const now = firebase.firestore.FieldValue.serverTimestamp();
+      let created = 0;
+      for (const name of base) {
+        const nameKey = normalizeCandidateName(name);
+        const docId = candidateDocId(key, nameKey);
+        await db.collection('candidates').doc(docId).set({
+          name,
+          nameKey,
+          position,
+          positionKey: key,
+          image: avatarDataUri(name),
+          votes: 0,
+          createdAt: now
+        }, { merge: true });
+        created++;
+      }
+      candidateCounts[key] = created;
+    } catch {}
+  }
+}
+
+async function loadCandidateCounts() {
+  try {
+    const snap = await db.collection('candidates').get();
+    const counts = {};
+    snap.forEach(docSnap => {
+      const c = docSnap.data() || {};
+      const key = normalizePosition(c.positionKey || c.position);
+      if (!key) return;
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    return counts;
+  } catch {
+    return {};
+  }
+}
+
+function renderStatus(status) {
+  if (status === 'active') {
+    votingStatus.innerText = 'Voting Active';
+    votingStatus.classList.add('text-green-600');
+    votingStatus.classList.remove('text-red-600');
+  } else {
+    votingStatus.innerText = 'Voting Closed';
+    votingStatus.classList.remove('text-green-600');
+    votingStatus.classList.add('text-red-600');
+  }
+}
+
+function renderPositions(positions, electionStatus, userVotes, candidateCounts) {
+  positionsList.innerHTML = '';
+
+  for (const position of positions) {
+    const positionKey = normalizePosition(position);
+    const count = candidateCounts?.[positionKey] || 0;
+    const card = document.createElement('div');
+    card.className = 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border rounded-lg p-4 hover:bg-secondary transition position-card';
+    card.dataset.position = position;
+    card.dataset.positionKey = positionKey;
+
+    const href = `candidates.html?position=${encodeURIComponent(position)}`;
+    card.innerHTML = `
+      <div>
+        <h4 class="font-medium">${position}</h4>
+        <p class="text-sm text-gray-500">${count ? `${count} nominated candidate${count === 1 ? '' : 's'}` : 'No nominated candidates yet'}</p>
+      </div>
+      <a href="${href}" class="vote-btn mciu-btn px-5 py-2 rounded-lg transition w-full sm:w-auto text-center">Vote</a>
+    `;
+
+    positionsList.appendChild(card);
+  }
+
+  const votedCount = Object.keys(userVotes || {}).length;
+  const totalPositions = positions.length;
+
+  if (totalPositions === 0) {
+    progress.innerText = 'No Positions';
+  } else if (votedCount === 0) {
+    progress.innerText = 'Not Voted';
+  } else if (votedCount >= totalPositions) {
+    progress.innerText = 'All Positions Voted';
+  } else {
+    progress.innerText = 'Partially Voted';
+  }
+
+  document.querySelectorAll('.position-card').forEach(card => {
+    const positionKey = card.dataset.positionKey;
+    const btn = card.querySelector('.vote-btn');
+    const count = candidateCounts?.[positionKey] || 0;
+
+    if (userVotes && userVotes[positionKey]) {
+      btn.innerText = 'Voted';
+      btn.classList.add('opacity-50', 'pointer-events-none');
+    }
+
+    if (electionStatus !== 'active') {
+      btn.innerText = 'Closed';
+      btn.classList.add('opacity-50', 'pointer-events-none');
+    }
+
+    if (count === 0) {
+      btn.innerText = 'Unavailable';
+      btn.classList.add('opacity-50', 'pointer-events-none');
+    }
+  });
+}
+
+(async () => {
+  try {
+    const voterSnap = await db.collection('voters').doc(safeDocId(String(currentUser.matric || '').toUpperCase())).get();
+    if (voterSnap.exists) {
+      const voter = voterSnap.data() || {};
+      if (voter.completedAt) {
+        localStorage.removeItem('currentUser');
+        alert('This matric number has already completed voting and cannot login again.');
+        window.location.href = 'login.html';
+        return;
+      }
+    }
+  } catch {}
+
+  const election = await loadElection();
+  renderStatus(election.status);
+  const userVotes = await loadUserVotes(currentUser.matric);
+  const candidateCounts = await loadCandidateCounts();
+  await seedCandidatesIfEmpty(election.positions, candidateCounts);
+  renderPositions(election.positions, election.status, userVotes, candidateCounts);
+
+  const votedCount = Object.keys(userVotes || {}).length;
+  const totalPositions = election.positions.length;
+  if (totalPositions > 0 && votedCount >= totalPositions) {
+    doneVotingBtn.classList.remove('hidden');
+    doneVotingBtn.onclick = async () => {
+      doneVotingBtn.classList.add('opacity-50', 'pointer-events-none');
+      await db.collection('voters').doc(safeDocId(String(currentUser.matric || '').toUpperCase())).set({
+        completedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      localStorage.removeItem('currentUser');
+      window.location.href = 'index.html';
+    };
+  }
+})().catch(() => {});
+</script>
+
+
+</body>
+</html>

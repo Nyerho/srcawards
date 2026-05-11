@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SRC Student Week Awards 2026 Admin Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="tailwind.css">
+</head>
+
+<body class="mciu-theme min-h-screen">
+  <header class="bg-white shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <a href="index.html" class="shrink-0" aria-label="Home">
+          <img src="images/mciu%20logo.jpg" alt="SRC Logo" width="40" height="40" class="mciu-logo mciu-brand-img">
+        </a>
+        <div>
+          <h1 class="text-lg font-semibold text-gray-900">Admin Dashboard</h1>
+          <p class="text-xs text-gray-500">SRC Student Week Awards 2026</p>
+        </div>
+      </div>
+      <a href="index.html" class="text-primary text-sm w-full sm:w-auto text-center">Logout</a>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+    <div id="toast" class="hidden mb-4 rounded-lg px-4 py-3 text-sm"></div>
+
+    <div class="bg-white rounded-xl shadow p-4 sm:p-6 mciu-card">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <p class="text-sm text-gray-500">Election Status</p>
+          <p class="text-lg font-semibold"><span id="statusText"></span></p>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-3">
+        <button id="openBtn" class="mciu-btn px-4 py-2 rounded w-full sm:w-auto">Open Election</button>
+        <button id="closeBtn" class="mciu-btn px-4 py-2 rounded w-full sm:w-auto">Close Election</button>
+        <button id="resetBtn" class="mciu-btn px-4 py-2 rounded w-full sm:w-auto">Reset Election</button>
+        </div>
+      </div>
+
+      <hr class="my-6">
+
+      <h2 class="text-xl font-semibold mb-4">Add Position</h2>
+      <div class="flex flex-col md:flex-row gap-3">
+        <input id="newPositionName" class="border px-3 py-2 rounded w-full md:flex-1 bg-white text-gray-900" placeholder="e.g. Treasurer">
+        <button id="addPositionBtn" class="mciu-btn px-6 py-2 rounded w-full md:w-auto">Add Position</button>
+      </div>
+
+      <hr class="my-6">
+
+      <h2 class="text-xl font-semibold mb-4">Add Candidate</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        <input id="candName" class="border px-3 py-2 rounded w-full bg-white text-gray-900" placeholder="Candidate name">
+        <select id="candPosition" class="border px-3 py-2 rounded w-full bg-white text-gray-900"></select>
+        <input id="candImage" type="file" accept="image/*" class="border px-3 py-2 rounded w-full bg-white text-gray-900">
+      </div>
+      <div class="mt-4">
+        <button id="addCandidateBtn" class="mciu-btn px-6 py-2 rounded w-full sm:w-auto">Add Candidate</button>
+      </div>
+
+      <hr class="my-6">
+
+      <h2 class="text-xl font-semibold mb-4">Candidates</h2>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <p class="text-sm text-gray-600">If candidates were deleted, restore the official nominees for each category.</p>
+        <button id="restoreCandidatesBtn" class="mciu-btn px-4 py-2 rounded w-full sm:w-auto">Restore Candidates</button>
+      </div>
+      <div id="candidateList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+
+      <hr class="my-6">
+
+      <h2 class="text-xl font-semibold mb-4">Vote Records</h2>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <p class="text-sm text-gray-600">Download voting data for analysis.</p>
+        <button id="downloadCsvBtn" class="mciu-btn px-4 py-2 rounded w-full sm:w-auto">Download CSV</button>
+      </div>
+      <div class="overflow-auto border rounded">
+        <table class="w-full text-sm min-w-max">
+          <thead class="bg-secondary text-left">
+            <tr>
+              <th class="p-3 whitespace-nowrap">Matric No</th>
+              <th class="p-3 whitespace-nowrap">Name</th>
+              <th class="p-3 whitespace-nowrap">Position</th>
+              <th class="p-3 whitespace-nowrap">Voted For</th>
+            </tr>
+          </thead>
+          <tbody id="votesTableBody"></tbody>
+        </table>
+      </div>
+
+      <hr class="my-6">
+
+      <h2 class="text-xl font-semibold mb-4">Registered Voters</h2>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <p class="text-sm text-gray-600">Delete fake/unverified voters or restart voting (clears votes + voters).</p>
+        <button id="restartVotingBtn" class="mciu-btn px-4 py-2 rounded w-full sm:w-auto">Restart Voting</button>
+      </div>
+      <div class="overflow-auto border rounded">
+        <table class="w-full text-sm min-w-max">
+          <thead class="bg-secondary text-left">
+            <tr>
+              <th class="p-3 whitespace-nowrap">Matric No</th>
+              <th class="p-3 whitespace-nowrap">Name</th>
+              <th class="p-3 whitespace-nowrap">Status</th>
+              <th class="p-3 whitespace-nowrap">Completed At</th>
+              <th class="p-3 whitespace-nowrap">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="votersTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    try {
+      db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+    } catch {}
+
+    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+    const logoutLink = document.querySelector('a[href="index.html"]');
+
+    const defaultPositions = [
+      'MOST CREATIVE',
+      'MOST INFLUENTIAL',
+      'ENTREPRENEUR OF THE YEAR',
+      'BRAND OF THE YEAR',
+      'MOST ACTIVE SRC MEMBER',
+      'FRESHER OF THE YEAR (MALE)',
+      'FRESHER OF THE YEAR (FEMALE)'
+    ];
+
+    const nomineesByPosition = {
+      'MOST CREATIVE': ['Maron', 'Boy TRYBE', 'Nolan', 'Ceejay', 'Khrome AI'],
+      'MOST INFLUENTIAL': ['Albert (DOS)', 'Tee is the Tea', 'Harriet', 'Big Hemsel( Masa Republic)', 'Pretty Ella aka Big Ella'],
+      'ENTREPRENEUR OF THE YEAR': [
+        'Onyibe Joel ( Tech Odyssey, Jbanks Media)',
+        'Eyione Meyiwa ( Luxurious)',
+        'Dolor Ambrose (Mega Cleaning Service, Mega Apparels)',
+        'Esiso Nyerhovwo (Eon)',
+        'Igbinosa Tejiri (Teejay Luxury)',
+        'Akponokan Harriet (Harriet Standard)'
+      ],
+      'BRAND OF THE YEAR': ['Everything Shirt', 'Tech Odyssey', 'Tare’s Glam', 'Scents by Sonya', 'Scents by Gratias', 'Harriet Standard'],
+      'MOST ACTIVE SRC MEMBER': [
+        'Omiagbemi David ( President)',
+        'Aya.O. Nadine ( Vice President)',
+        'Idemive Russell ( Director of Socials)',
+        'Avworhokai. O. Albert ( Director of Sports)',
+        'Olubenga Temitope ( Director of Welfare)',
+        'Eyione Gift ( Financial Secretary)',
+        'Efetobore Josephine ( Treasurer)',
+        'Beroh Elizabeth ( General Secretary)',
+        'Uti.O.Lucy (Assistant General Secretary)',
+        'Anthony Amanda.O. (Fellowship President)',
+        'Okwoho.O. Festus ( Assistant Fellowship President)',
+        'Emevor Oghenekevwe ( PRO)'
+      ],
+      'FRESHER OF THE YEAR (MALE)': ['Eghreobiyare Aaron Ogaga', 'Bryan Ogbuenyi', 'Tamaraodubo-Diwere Derrick', 'Desmond', 'Answer Njika'],
+      'FRESHER OF THE YEAR (FEMALE)': ['Uwadiego Chinedum Victory', 'Ibomo Olivia', 'Christopher Deborah', 'Pereinei Dedefina Success']
+    };
+    const electionRef = db.collection('election').doc('current');
+
+    const openBtn = document.getElementById('openBtn');
+    const closeBtn = document.getElementById('closeBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const addPositionBtn = document.getElementById('addPositionBtn');
+    const newPositionName = document.getElementById('newPositionName');
+    const addCandidateBtn = document.getElementById('addCandidateBtn');
+    const candName = document.getElementById('candName');
+    const candPosition = document.getElementById('candPosition');
+    const candImage = document.getElementById('candImage');
+    const statusText = document.getElementById('statusText');
+    const toast = document.getElementById('toast');
+    const candidateList = document.getElementById('candidateList');
+    const votesTableBody = document.getElementById('votesTableBody');
+    const votersTableBody = document.getElementById('votersTableBody');
+    const restartVotingBtn = document.getElementById('restartVotingBtn');
+    const restoreCandidatesBtn = document.getElementById('restoreCandidatesBtn');
+    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+
+    let cachedPositions = [...defaultPositions];
+
+    function withTimeout(promise, timeoutMs) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
+      ]);
+    }
+
+    function normalizePosition(value) {
+      return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function normalizeCandidateName(value) {
+      return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
+    function safeErrorMessage(e) {
+      try {
+        if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) return 'You are offline. Please connect to the internet and try again.';
+        const code = e && e.code ? String(e.code) : '';
+        const msg = e && e.message ? String(e.message) : '';
+        if (code && msg) return `${code}: ${msg}`;
+        if (msg) return msg;
+        if (code) return code;
+        return 'Unknown error';
+      } catch {
+        return 'Unknown error';
+      }
+    }
+
+    async function requireAdmin() {
+      const user = auth.currentUser;
+      if (!user) return false;
+      try {
+        const snap = await withTimeout(db.collection('admins').doc(user.uid).get(), 4500);
+        return snap.exists;
+      } catch {
+        return false;
+      }
+    }
+
+    function showToast(message, type = 'success') {
+      if (!toast) return;
+      toast.classList.remove('hidden', 'bg-green-50', 'text-green-800', 'border', 'border-green-200', 'bg-red-50', 'text-red-800', 'border-red-200');
+      if (type === 'error') {
+        toast.classList.add('bg-red-50', 'text-red-800', 'border', 'border-red-200');
+      } else {
+        toast.classList.add('bg-green-50', 'text-green-800', 'border', 'border-green-200');
+      }
+      toast.textContent = message;
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toast.classList.add('hidden'), 4500);
+    }
+
+    function setButtonLoading(btn, isLoading, loadingText, defaultText) {
+      if (!btn) return;
+      btn.disabled = isLoading;
+      btn.classList.toggle('opacity-50', isLoading);
+      btn.classList.toggle('pointer-events-none', isLoading);
+      btn.textContent = isLoading ? loadingText : defaultText;
+    }
+
+    function setStatus(status) {
+      const v = status === 'active' ? 'ACTIVE' : 'CLOSED';
+      statusText.textContent = v;
+      statusText.className = status === 'active' ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold';
+    }
+
+    function dataUriByteLength(dataUri) {
+      try {
+        const s = String(dataUri || '');
+        const idx = s.indexOf('base64,');
+        if (idx === -1) return s.length;
+        const base64 = s.slice(idx + 7);
+        const padding = (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
+        return Math.floor(base64.length * 0.75) - padding;
+      } catch {
+        return 0;
+      }
+    }
+
+    function toBase64(file, timeoutMs = 15000) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        const t = setTimeout(() => reject(new Error('File read timeout')), timeoutMs);
+        r.onload = () => { clearTimeout(t); resolve(r.result); };
+        r.onerror = () => { clearTimeout(t); reject(new Error('Could not read file')); };
+        r.readAsDataURL(file);
+      });
+    }
+
+    function loadImageFromFile(file, timeoutMs = 15000) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        const cleanup = () => {
+          try { URL.revokeObjectURL(url); } catch {}
+        };
+        const t = setTimeout(() => {
+          cleanup();
+          reject(new Error('Image load timeout'));
+        }, timeoutMs);
+        img.onload = () => {
+          clearTimeout(t);
+          cleanup();
+          resolve(img);
+        };
+        img.onerror = () => {
+          clearTimeout(t);
+          cleanup();
+          reject(new Error('Could not load image'));
+        };
+        img.src = url;
+      });
+    }
+
+    async function compressImageToDataUri(file, maxBytes) {
+      if (file && file.type === 'image/svg+xml') {
+        const svg = await toBase64(file, 8000);
+        if (dataUriByteLength(svg) <= maxBytes) return svg;
+        return null;
+      }
+
+      const img = await loadImageFromFile(file, 15000);
+      const maxDim = 1200;
+      const scale = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+      const w = Math.max(1, Math.round((img.width || 1) * scale));
+      const h = Math.max(1, Math.round((img.height || 1) * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+
+      let quality = 0.9;
+      let out = canvas.toDataURL('image/jpeg', quality);
+      let i = 0;
+      while (dataUriByteLength(out) > maxBytes && quality > 0.4 && i < 8) {
+        quality = Math.max(0.4, quality - 0.1);
+        out = canvas.toDataURL('image/jpeg', quality);
+        i++;
+      }
+      if (dataUriByteLength(out) > maxBytes) return null;
+      return out;
+    }
+
+    function getInitials(name) {
+      const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+      const first = parts[0]?.[0] ?? '';
+      const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '';
+      return (first + last).toUpperCase() || 'U';
+    }
+
+    function hashToHue(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+      return hash % 360;
+    }
+
+    function avatarDataUri(name) {
+      const initials = getInitials(name);
+      const hue = hashToHue(String(name || 'User'));
+      const bg = `hsl(${hue} 70% 45%)`;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><rect width="256" height="256" rx="128" fill="${bg}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="96" fill="#fff" font-weight="700">${initials}</text></svg>`;
+      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    }
+
+    function formatTimestamp(ts) {
+      try {
+        if (!ts) return '';
+        if (typeof ts.toDate === 'function') return ts.toDate().toLocaleString();
+        return '';
+      } catch {
+        return '';
+      }
+    }
+
+    function toCsvCell(value) {
+      const s = String(value ?? '');
+      if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    }
+
+    function downloadTextFile(filename, text, mime) {
+      const blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
+
+    async function downloadVotingCsv() {
+      setButtonLoading(downloadCsvBtn, true, 'Preparing...', 'Download CSV');
+      try {
+        const votesSnap = await withTimeout(db.collection('votes').orderBy('createdAt', 'desc').get(), 20000);
+        const votersSnap = await withTimeout(db.collection('voters').get(), 20000);
+        const candidatesSnap = await withTimeout(db.collection('candidates').get(), 20000);
+
+        const votersByMatric = {};
+        votersSnap.forEach(d => {
+          const v = d.data() || {};
+          const matric = String(v.matric || '').trim().toUpperCase();
+          if (!matric) return;
+          votersByMatric[matric] = {
+            name: v.name || '',
+            completedAt: formatTimestamp(v.completedAt) || ''
+          };
+        });
+
+        const candidatesById = {};
+        candidatesSnap.forEach(d => {
+          const c = d.data() || {};
+          candidatesById[d.id] = {
+            candidateName: c.name || '',
+            position: c.position || '',
+            positionKey: c.positionKey || ''
+          };
+        });
+
+        const rows = [];
+        votesSnap.forEach(d => {
+          const v = d.data() || {};
+          const matric = String(v.matric || '').trim().toUpperCase();
+          const voterName = v.voterName || votersByMatric[matric]?.name || '';
+          const position = v.position || candidatesById[v.candidateId]?.position || '';
+          const positionKey = v.positionKey || candidatesById[v.candidateId]?.positionKey || '';
+          const candidateId = v.candidateId || '';
+          const candidateName = v.candidateName || candidatesById[candidateId]?.candidateName || '';
+          const votedAt = formatTimestamp(v.createdAt) || '';
+          const completedAt = votersByMatric[matric]?.completedAt || '';
+          rows.push({
+            matric,
+            voterName,
+            position,
+            positionKey,
+            candidateId,
+            candidateName,
+            votedAt,
+            completedAt
+          });
+        });
+
+        const header = ['matric', 'voterName', 'position', 'positionKey', 'candidateId', 'candidateName', 'votedAt', 'completedAt'];
+        const csv = [header.join(',')]
+          .concat(rows.map(r => header.map(k => toCsvCell(r[k])).join(',')))
+          .join('\n');
+
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        downloadTextFile(`src-student-week-awards-2026-votes-${stamp}.csv`, csv, 'text/csv;charset=utf-8');
+        showToast('CSV downloaded');
+      } catch (e) {
+        showToast(`Could not download CSV: ${safeErrorMessage(e)}`, 'error');
+      } finally {
+        setButtonLoading(downloadCsvBtn, false, 'Preparing...', 'Download CSV');
+      }
+    }
+
+    function renderPositionOptions() {
+      const positions = Array.isArray(cachedPositions) && cachedPositions.length ? cachedPositions : defaultPositions;
+      const unique = Array.from(new Set(positions.map(p => String(p || '').trim()).filter(Boolean)));
+      const current = candPosition.value;
+      const hasCurrent = current && unique.includes(current);
+      if (!unique.length) {
+        candPosition.innerHTML = `<option value="" disabled selected>No positions available</option>`;
+        return;
+      }
+      candPosition.innerHTML = [`<option value="" disabled ${hasCurrent ? '' : 'selected'}>Select position</option>`, ...unique.map(p => `<option value="${p}">${p}</option>`)].join('');
+      if (hasCurrent) candPosition.value = current;
+    }
+
+    async function ensureElectionDoc() {
+      try {
+        const snap = await withTimeout(electionRef.get(), 4500);
+        if (!snap.exists) {
+          await electionRef.set({ status: 'closed', positions: defaultPositions }, { merge: true });
+          cachedPositions = [...defaultPositions];
+          localStorage.setItem('positions', JSON.stringify(cachedPositions));
+          localStorage.setItem('electionStatus', 'closed');
+          setStatus('closed');
+          return { status: 'closed', positions: cachedPositions };
+        }
+        const d = snap.data() || {};
+        const status = d.status === 'active' ? 'active' : 'closed';
+        const positions = Array.isArray(d.positions) && d.positions.length ? d.positions : defaultPositions;
+        cachedPositions = [...positions];
+        localStorage.setItem('positions', JSON.stringify(cachedPositions));
+        localStorage.setItem('electionStatus', status);
+        setStatus(status);
+        return { status, positions: cachedPositions };
+      } catch (e) {
+        let status = 'closed';
+        const legacyStatus = localStorage.getItem('electionStatus');
+        if (legacyStatus === 'active' || legacyStatus === 'closed') status = legacyStatus;
+        let positions = [...defaultPositions];
+        try {
+          const stored = JSON.parse(localStorage.getItem('positions') || 'null');
+          if (Array.isArray(stored) && stored.length) positions = stored;
+        } catch {}
+        cachedPositions = [...positions];
+        setStatus(status);
+        return { status, positions: cachedPositions };
+      }
+    }
+
+    async function setElectionStatus(status) {
+      try {
+        await withTimeout(electionRef.set({ status }, { merge: true }), 4500);
+        localStorage.setItem('electionStatus', status);
+        setStatus(status);
+        showToast(`Election is now ${status.toUpperCase()}`);
+      } catch (e) {
+        showToast(`Could not update status: ${safeErrorMessage(e)}`, 'error');
+      }
+    }
+
+    async function deleteCollection(name) {
+      const snap = await db.collection(name).limit(450).get();
+      if (snap.empty) return;
+      const batch = db.batch();
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+      await deleteCollection(name);
+    }
+
+    async function resetCandidateVotes() {
+      let lastDocId = null;
+      for (;;) {
+        let q = db.collection('candidates').orderBy(firebase.firestore.FieldPath.documentId()).limit(450);
+        if (lastDocId) q = q.startAfter(lastDocId);
+        const snap = await q.get();
+        if (snap.empty) return;
+        const batch = db.batch();
+        snap.docs.forEach(d => batch.update(d.ref, { votes: 0 }));
+        await batch.commit();
+        lastDocId = snap.docs[snap.docs.length - 1].id;
+      }
+    }
+
+    async function resetElection() {
+      if (!confirm('Reset election? This deletes candidates, votes and registered voters.')) return;
+      setButtonLoading(resetBtn, true, 'Resetting...', 'Reset Election');
+      try {
+        await deleteCollection('candidates');
+        await deleteCollection('votes');
+        await deleteCollection('voters');
+        showToast('Election data reset');
+        await refreshAll();
+      } catch (e) {
+        showToast(`Could not reset: ${safeErrorMessage(e)}`, 'error');
+      } finally {
+        setButtonLoading(resetBtn, false, 'Resetting...', 'Reset Election');
+      }
+    }
+
+    async function addPosition() {
+      const name = String(newPositionName.value || '').trim().replace(/\s+/g, ' ');
+      if (!name) {
+        showToast('Enter position name', 'error');
+        return;
+      }
+      const exists = cachedPositions.some(p => String(p).toLowerCase() === name.toLowerCase());
+      if (exists) {
+        showToast('Position already exists', 'error');
+        return;
+      }
+      setButtonLoading(addPositionBtn, true, 'Adding...', 'Add Position');
+      try {
+        const updated = [...cachedPositions, name];
+        cachedPositions = updated;
+        localStorage.setItem('positions', JSON.stringify(updated));
+        renderPositionOptions();
+        await electionRef.set({ positions: updated }, { merge: true });
+        showToast(`Position added: ${name}`);
+        newPositionName.value = '';
+      } catch (e) {
+        showToast(`Could not add position: ${safeErrorMessage(e)}`, 'error');
+      } finally {
+        setButtonLoading(addPositionBtn, false, 'Adding...', 'Add Position');
+      }
+    }
+
+    function candidateDocId(positionKey, nameKey) {
+      const raw = `${positionKey}__${nameKey}`;
+      return raw.replace(/[\/#?[\]]/g, '_');
+    }
+
+    async function restoreCandidates() {
+      setButtonLoading(restoreCandidatesBtn, true, 'Restoring...', 'Restore Candidates');
+      try {
+        const positions = Array.isArray(cachedPositions) && cachedPositions.length ? cachedPositions : defaultPositions;
+        const unique = Array.from(new Set(positions.map(p => String(p || '').trim()).filter(Boolean)));
+        let created = 0;
+        for (const position of unique) {
+          const positionKey = normalizePosition(position);
+          if (!positionKey) continue;
+          const existsSnap = await withTimeout(
+            db.collection('candidates').where('positionKey', '==', positionKey).limit(1).get(),
+            7000
+          ).catch(() => null);
+          if (existsSnap && !existsSnap.empty) continue;
+          const nominees = nomineesByPosition[position] || [];
+          for (const name of nominees) {
+            const nameKey = normalizeCandidateName(name);
+            const docId = candidateDocId(positionKey, nameKey);
+            const ref = db.collection('candidates').doc(docId);
+            await withTimeout(ref.set({
+              name,
+              nameKey,
+              position,
+              positionKey,
+              image: avatarDataUri(name),
+              votes: 0,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true }), 9000);
+            created++;
+          }
+        }
+        showToast(created ? `Restored ${created} candidates` : 'No candidates needed restoring');
+        await renderCandidates();
+      } catch (e) {
+        showToast(`Could not restore candidates: ${safeErrorMessage(e)}`, 'error');
+      } finally {
+        setButtonLoading(restoreCandidatesBtn, false, 'Restoring...', 'Restore Candidates');
+      }
+    }
+
+    async function addCandidate() {
+      const name = String(candName.value || '').trim();
+      const position = String(candPosition.value || '').trim();
+      const positionKey = normalizePosition(position);
+      const nameKey = normalizeCandidateName(name);
+      const file = candImage.files && candImage.files[0] ? candImage.files[0] : null;
+
+      if (!name) { showToast('Enter candidate name', 'error'); return; }
+      if (!position) { showToast('Select position', 'error'); return; }
+      if (!positionKey) { showToast('Select position', 'error'); return; }
+      if (!nameKey) { showToast('Enter candidate name', 'error'); return; }
+
+      if (file && file.size > 5000000) {
+        showToast('Image too large. Choose a smaller image (max 5MB).', 'error');
+        return;
+      }
+
+      if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
+        showToast('You are offline. Please connect to the internet and try again.', 'error');
+        return;
+      }
+
+      setButtonLoading(addCandidateBtn, true, 'Adding...', 'Add Candidate');
+      try {
+        const docId = candidateDocId(positionKey, nameKey);
+        const ref = db.collection('candidates').doc(docId);
+        try {
+          const existing = await withTimeout(ref.get(), 4500);
+          if (existing.exists) {
+            showToast(`Candidate "${name}" already exists for ${position}.`, 'error');
+            return;
+          }
+        } catch {}
+
+        let image = null;
+        if (file) {
+          setButtonLoading(addCandidateBtn, true, 'Optimizing image...', 'Add Candidate');
+          image = await withTimeout(compressImageToDataUri(file, 650000), 20000);
+          if (!image) {
+            showToast('Image too large after optimization. Choose a smaller image.', 'error');
+            return;
+          }
+        }
+
+        await withTimeout(ref.set({
+          name,
+          nameKey,
+          position,
+          positionKey,
+          image: image || avatarDataUri(name),
+          votes: 0,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        }), 9000);
+
+        candName.value = '';
+        candImage.value = '';
+        showToast(`Candidate added: ${name}`);
+        await renderCandidates();
+      } catch (e) {
+        showToast(`Could not add candidate: ${safeErrorMessage(e)}`, 'error');
+      } finally {
+        setButtonLoading(addCandidateBtn, false, 'Adding...', 'Add Candidate');
+      }
+    }
+
+    async function renderCandidates() {
+      candidateList.innerHTML = '';
+      try {
+        const snap = await withTimeout(db.collection('candidates').get(), 7000);
+        const rows = [];
+        snap.forEach(s => {
+          const c = s.data() || {};
+          rows.push({
+            id: s.id,
+            name: c.name || '',
+            position: c.position || '',
+            image: c.image || null,
+            votes: c.votes ?? 0
+          });
+        });
+        rows.sort((a, b) => (a.position + a.name).localeCompare(b.position + b.name));
+        if (!rows.length) {
+          candidateList.innerHTML = `<div class="text-sm text-gray-600">No candidates yet</div>`;
+          return;
+        }
+        for (const c of rows) {
+          const image = c.image || avatarDataUri(c.name);
+          const card = document.createElement('div');
+          card.className = 'border p-4 rounded text-center bg-white';
+          card.innerHTML = `
+            <img src="${image}" class="w-20 h-20 sm:w-24 sm:h-24 mx-auto rounded-full object-cover">
+            <h4 class="mt-2 font-semibold">${c.name}</h4>
+            <p class="text-sm">${c.position}</p>
+            <p class="text-sm text-gray-500">Votes: ${c.votes ?? 0}</p>
+            <button class="text-red-600 text-sm mt-2">Delete</button>
+          `;
+          card.querySelector('button').onclick = () => deleteCandidate(c.id);
+          candidateList.appendChild(card);
+        }
+      } catch (e) {
+        candidateList.innerHTML = `<div class="text-sm text-red-700">Could not load candidates: ${safeErrorMessage(e)}</div>`;
+      }
+    }
+
+    async function deleteCandidate(id) {
+      if (!confirm('Delete this candidate?')) return;
+      try {
+        await db.collection('candidates').doc(id).delete();
+        showToast('Candidate deleted');
+        await renderCandidates();
+      } catch (e) {
+        showToast(`Could not delete: ${safeErrorMessage(e)}`, 'error');
+      }
+    }
+
+    async function renderVoteRecords() {
+      votesTableBody.innerHTML = '';
+      try {
+        const snap = await withTimeout(db.collection('votes').orderBy('createdAt', 'desc').limit(200).get(), 7000);
+        snap.forEach(s => {
+          const v = s.data() || {};
+          const matric = v.matric || '';
+          const name = v.voterName || '';
+          const position = v.position || '';
+          const votedFor = v.candidateName || v.candidateId || '';
+          const tr = document.createElement('tr');
+          tr.className = 'border-t';
+          tr.innerHTML = `
+            <td class="p-3 whitespace-nowrap">${matric}</td>
+            <td class="p-3 whitespace-nowrap">${name}</td>
+            <td class="p-3 whitespace-nowrap">${position}</td>
+            <td class="p-3 whitespace-nowrap">${votedFor}</td>
+          `;
+          votesTableBody.appendChild(tr);
+        });
+      } catch (e) {
+        const tr = document.createElement('tr');
+        tr.className = 'border-t';
+        tr.innerHTML = `<td class="p-3 text-red-700" colspan="4">Could not load votes: ${safeErrorMessage(e)}</td>`;
+        votesTableBody.appendChild(tr);
+      }
+    }
+
+    async function renderRegisteredVoters() {
+      votersTableBody.innerHTML = '';
+      try {
+        const snap = await withTimeout(db.collection('voters').orderBy('createdAt', 'desc').limit(200).get(), 7000);
+        snap.forEach(s => {
+          const v = s.data() || {};
+          const matric = v.matric || s.id || '';
+          const name = v.name || '';
+          const status = v.completedAt ? 'COMPLETED' : 'ACTIVE';
+          const completedAt = formatTimestamp(v.completedAt);
+          const docId = s.id;
+          const voteMatric = v.matric || '';
+          const tr = document.createElement('tr');
+          tr.className = 'border-t';
+          tr.innerHTML = `
+            <td class="p-3 whitespace-nowrap">${matric}</td>
+            <td class="p-3 whitespace-nowrap">${name}</td>
+            <td class="p-3 whitespace-nowrap">${status}</td>
+            <td class="p-3 whitespace-nowrap">${completedAt}</td>
+            <td class="p-3 whitespace-nowrap"><button class="text-red-700 text-sm">Delete</button></td>
+          `;
+          tr.querySelector('button').onclick = () => deleteVoter(docId, voteMatric);
+          votersTableBody.appendChild(tr);
+        });
+      } catch (e) {
+        const tr = document.createElement('tr');
+        tr.className = 'border-t';
+        tr.innerHTML = `<td class="p-3 text-red-700" colspan="5">Could not load voters: ${safeErrorMessage(e)}</td>`;
+        votersTableBody.appendChild(tr);
+      }
+    }
+
+    async function deleteVoter(voterDocId, matric) {
+      if (!confirm('Delete this voter? This will also remove their vote records.')) return;
+      try {
+        await withTimeout(db.collection('voters').doc(voterDocId).delete(), 7000);
+        if (matric) {
+          const votesSnap = await withTimeout(db.collection('votes').where('matric', '==', matric).get(), 9000);
+          if (!votesSnap.empty) {
+            const batch = db.batch();
+            votesSnap.docs.forEach(d => batch.delete(d.ref));
+            await withTimeout(batch.commit(), 9000);
+          }
+        }
+        showToast('Voter deleted');
+        await Promise.allSettled([renderRegisteredVoters(), renderVoteRecords()]);
+      } catch (e) {
+        showToast(`Could not delete voter: ${safeErrorMessage(e)}`, 'error');
+      }
+    }
+
+    async function restartVoting() {
+      if (!confirm('Restart voting? This will delete ALL votes and ALL registered voters (candidates remain).')) return;
+      setButtonLoading(restartVotingBtn, true, 'Restarting...', 'Restart Voting');
+      try {
+        await deleteCollection('votes');
+        await deleteCollection('voters');
+        await resetCandidateVotes();
+        showToast('Voting restarted (votes + voters cleared, candidate counts reset)');
+        await Promise.allSettled([renderCandidates(), renderVoteRecords(), renderRegisteredVoters()]);
+      } catch (e) {
+        showToast(`Could not restart voting: ${safeErrorMessage(e)}`, 'error');
+      } finally {
+        setButtonLoading(restartVotingBtn, false, 'Restarting...', 'Restart Voting');
+      }
+    }
+
+    async function refreshAll() {
+      renderPositionOptions();
+      try {
+        await Promise.resolve();
+      } catch {}
+
+      ensureElectionDoc()
+        .then(() => renderPositionOptions())
+        .catch(() => {});
+
+      Promise.allSettled([
+        renderCandidates(),
+        renderVoteRecords(),
+        renderRegisteredVoters()
+      ]).catch(() => {});
+    }
+
+    openBtn.onclick = () => setElectionStatus('active');
+    closeBtn.onclick = () => setElectionStatus('closed');
+    resetBtn.onclick = () => resetElection();
+    addPositionBtn.onclick = () => addPosition();
+    addCandidateBtn.onclick = () => addCandidate();
+    if (restartVotingBtn) restartVotingBtn.onclick = () => restartVoting();
+    if (restoreCandidatesBtn) restoreCandidatesBtn.onclick = () => restoreCandidates();
+    if (downloadCsvBtn) downloadCsvBtn.onclick = () => downloadVotingCsv();
+
+    window.addCandidate = addCandidate;
+    window.deleteCandidate = deleteCandidate;
+
+    if (logoutLink) {
+      logoutLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        try { auth.signOut(); } catch {}
+        try { localStorage.removeItem('currentUser'); } catch {}
+        window.location.href = 'login.html';
+      });
+    }
+
+    auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        showToast('Admin sign-in required', 'error');
+        setTimeout(() => { window.location.href = 'login.html'; }, 600);
+        return;
+      }
+      const ok = await requireAdmin();
+      if (!ok) {
+        showToast('Not authorized as admin', 'error');
+        try { await auth.signOut(); } catch {}
+        try { localStorage.removeItem('currentUser'); } catch {}
+        setTimeout(() => { window.location.href = 'login.html'; }, 900);
+        return;
+      }
+      if (!currentUser || currentUser.role !== 'admin') {
+        localStorage.setItem('currentUser', JSON.stringify({ matric: 'ADMIN', role: 'admin', uid: user.uid }));
+      }
+      refreshAll().catch(e => showToast(`Init failed: ${safeErrorMessage(e)}`, 'error'));
+    });
+  </script>
+</body>
+</html>
