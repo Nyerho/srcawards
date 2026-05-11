@@ -384,11 +384,6 @@ window.submitVote = function () {
     window.location.href = 'login.html';
     return;
   }
-  if (!matric.startsWith('NS')) {
-    alert('Only Faculty of Natural & Applied Sciences students can vote. Matric number must start with NS');
-    window.location.href = 'login.html';
-    return;
-  }
 
   (async () => {
     const positionKey = normalizePosition(position);
@@ -409,7 +404,7 @@ window.submitVote = function () {
     try {
       await db.collection('voters').doc(safeDocId(matric)).set({
         matric,
-        faculty: 'NS',
+        faculty: 'ALL',
         name: voterName,
         lastLoginAt: firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });

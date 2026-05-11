@@ -88,7 +88,6 @@ service cloud.firestore {
       allow create: if
         request.resource.data.keys().hasOnly(['matric', 'voterName', 'position', 'positionKey', 'candidateId', 'candidateName', 'createdAt']) &&
         isNonEmptyString(request.resource.data.matric, 40) &&
-        request.resource.data.matric.matches('^NS.*') &&
         isNonEmptyString(request.resource.data.voterName, 120) &&
         isNonEmptyString(request.resource.data.position, 120) &&
         isPositionKey(request.resource.data.positionKey) &&
@@ -107,9 +106,8 @@ service cloud.firestore {
       allow create, update: if
         request.resource.data.keys().hasOnly(['matric', 'faculty', 'name', 'createdAt', 'lastLoginAt', 'completedAt']) &&
         isNonEmptyString(request.resource.data.matric, 40) &&
-        request.resource.data.matric.matches('^NS.*') &&
         voterId.matches('^[^/]+$') &&
-        request.resource.data.faculty == 'NS' &&
+        isNonEmptyString(request.resource.data.faculty, 40) &&
         (
           !('name' in request.resource.data) ||
           isNonEmptyString(request.resource.data.name, 120)

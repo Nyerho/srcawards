@@ -32,16 +32,21 @@
   <!-- Login Form -->
   <form class="space-y-5">
 
+    <div class="grid grid-cols-2 gap-3">
+      <button type="button" id="modeVoterBtn" class="w-full border py-2 rounded-lg bg-primary text-white">Voter</button>
+      <button type="button" id="modeAdminBtn" class="w-full border py-2 rounded-lg bg-white text-gray-700">Admin</button>
+    </div>
+
     <!-- Matric Number -->
-    <div>
-      <label class="block text-sm font-medium text-gray-700 mb-1">Matric Number (NS)</label>
+    <div id="voterMatricWrap">
+      <label class="block text-sm font-medium text-gray-700 mb-1">Matric Number</label>
       <input type="text" id="matric" placeholder="e.g. NS/CS/24/0936" required
         class="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
     </div>
 
     <!-- Password with eye toggle -->
     <div id="adminPasswordWrap" class="relative hidden">
-      <label class="block text-sm font-medium text-gray-700 mb-1">Password (Admin only)</label>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Admin Password</label>
       <input type="password" id="password" placeholder="••••••••"
         class="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary pr-10" />
       <button type="button" id="togglePassword" class="absolute inset-y-0 right-3 flex items-center text-gray-500">
@@ -53,8 +58,8 @@
     </div>
 
     <!-- Info -->
-    <div class="flex items-center justify-between text-sm">
-      <span class="text-gray-500">NS students only • One vote</span>
+    <div id="infoRow" class="flex items-center justify-between text-sm">
+      <span class="text-gray-500">All students • One vote</span>
       <a href="#" class="text-primary hover:underline">Forgot password?</a>
     </div>
 
@@ -86,11 +91,50 @@ const ADMIN_EMAIL = 'admin@srcstudentweekawards.com';
 
 const form = document.querySelector('form');
 const matricInput = document.getElementById('matric');
+const voterMatricWrap = document.getElementById('voterMatricWrap');
+const infoRow = document.getElementById('infoRow');
+const modeVoterBtn = document.getElementById('modeVoterBtn');
+const modeAdminBtn = document.getElementById('modeAdminBtn');
 const adminPasswordWrap = document.getElementById('adminPasswordWrap');
 const passwordInput = document.getElementById('password');
 const togglePassword = document.getElementById('togglePassword');
 const eyeIcon = document.getElementById('eyeIcon');
 const submitBtn = document.querySelector('button[type="submit"]');
+
+let loginMode = 'voter';
+function setMode(nextMode) {
+  loginMode = nextMode === 'admin' ? 'admin' : 'voter';
+  const isAdmin = loginMode === 'admin';
+
+  if (voterMatricWrap) voterMatricWrap.classList.toggle('hidden', isAdmin);
+  if (adminPasswordWrap) adminPasswordWrap.classList.toggle('hidden', !isAdmin);
+  if (infoRow) infoRow.classList.toggle('hidden', isAdmin);
+
+  if (modeVoterBtn) {
+    modeVoterBtn.classList.toggle('bg-primary', !isAdmin);
+    modeVoterBtn.classList.toggle('text-white', !isAdmin);
+    modeVoterBtn.classList.toggle('bg-white', isAdmin);
+    modeVoterBtn.classList.toggle('text-gray-700', isAdmin);
+  }
+  if (modeAdminBtn) {
+    modeAdminBtn.classList.toggle('bg-primary', isAdmin);
+    modeAdminBtn.classList.toggle('text-white', isAdmin);
+    modeAdminBtn.classList.toggle('bg-white', !isAdmin);
+    modeAdminBtn.classList.toggle('text-gray-700', !isAdmin);
+  }
+
+  submitBtn.innerText = isAdmin ? 'Login as Admin' : 'Login & Proceed';
+
+  if (isAdmin) {
+    if (passwordInput) passwordInput.focus();
+  } else {
+    if (passwordInput) {
+      passwordInput.value = '';
+      passwordInput.type = 'password';
+    }
+    if (matricInput) matricInput.focus();
+  }
+}
 function resetSubmit() {
   submitBtn.disabled = false;
   submitBtn.classList.remove('opacity-50', 'pointer-events-none');
@@ -110,17 +154,9 @@ function safeDocId(value) {
   return String(value || '').trim().replace(/[\/#?\[\]]/g, '_');
 }
 
-matricInput.addEventListener('input', () => {
-  const v = String(matricInput.value || '').trim().toLowerCase();
-  if (v === ADMIN_EMAIL.toLowerCase()) {
-    adminPasswordWrap.classList.remove('hidden');
-    passwordInput.focus();
-  } else {
-    adminPasswordWrap.classList.add('hidden');
-    passwordInput.value = '';
-    passwordInput.type = 'password';
-  }
-});
+if (modeVoterBtn) modeVoterBtn.addEventListener('click', () => setMode('voter'));
+if (modeAdminBtn) modeAdminBtn.addEventListener('click', () => setMode('admin'));
+setMode('voter');
 
 togglePassword.addEventListener('click', () => {
   if (adminPasswordWrap.classList.contains('hidden')) return;
@@ -135,7 +171,7 @@ togglePassword.addEventListener('click', () => {
 form.addEventListener('submit', e => {
   e.preventDefault();
 
-  const matric = matricInput.value.trim();
+  const matric = matricInput ? matricInput.value.trim() : '';
   const password = passwordInput.value.trim();
   submitBtn.disabled = true;
   submitBtn.classList.add('opacity-50', 'pointer-events-none');
@@ -146,7 +182,7 @@ form.addEventListener('submit', e => {
   try { auth.signOut(); } catch {}
 
   /* ===== ADMIN ===== */
-  if (matric.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+  if (loginMode === 'admin') {
     (async () => {
       if (!password) {
         alert('Enter admin password');
@@ -176,10 +212,10 @@ form.addEventListener('submit', e => {
   }
 
   const normalizedMatric = matric.replace(/\s+/g, '').toUpperCase();
-  const matricRegex = /^NS[\/-]?[A-Z0-9\/-]{2,}$/i;
+  const matricRegex = /^[A-Z0-9\/-]{3,}$/i;
 
   if (!matricRegex.test(normalizedMatric)) {
-    alert('Only Faculty of Natural & Applied Sciences students can vote. Matric number must start with NS');
+    alert('Enter a valid matric number');
     resetSubmit();
     return;
   }
@@ -197,7 +233,7 @@ form.addEventListener('submit', e => {
       const now = firebase.firestore.FieldValue.serverTimestamp();
       await voterRef.set({
         matric: normalizedMatric,
-        faculty: 'NS',
+        faculty: 'ALL',
         createdAt: now,
         lastLoginAt: now,
         completedAt: null

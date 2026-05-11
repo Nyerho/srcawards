@@ -137,7 +137,7 @@ const doneVotingBtn = document.getElementById('doneVotingBtn');
 if (!currentUser || !currentUser.matric || currentUser.role !== 'student') {
   window.location.href = 'login.html';
 }
-if (String(currentUser.matric || '').toUpperCase().startsWith('NS') === false) {
+if (!currentUser || !currentUser.matric) {
   window.location.href = 'login.html';
 }
 
