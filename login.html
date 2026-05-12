@@ -129,6 +129,7 @@ function setMode(nextMode) {
   if (voterMatricWrap) voterMatricWrap.classList.toggle('hidden', isAdmin);
   if (adminPasswordWrap) adminPasswordWrap.classList.toggle('hidden', !isAdmin);
   if (infoRow) infoRow.classList.toggle('hidden', isAdmin);
+  if (matricInput) matricInput.required = !isAdmin;
 
   if (modeVoterBtn) {
     modeVoterBtn.classList.toggle('bg-primary', !isAdmin);
