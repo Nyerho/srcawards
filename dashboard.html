@@ -336,7 +336,7 @@ function renderPositions(positions, electionStatus, userVotes, candidateCounts) 
     }
 
     if (count === 0) {
-      btn.innerText = 'Unavailable';
+      btn.innerText = 'No Nominees';
       btn.classList.add('opacity-50', 'pointer-events-none');
     }
   });
@@ -360,7 +360,11 @@ function renderPositions(positions, electionStatus, userVotes, candidateCounts) 
   renderStatus(election.status);
   const userVotes = await loadUserVotes(currentUser.matric);
   const candidateCounts = await loadCandidateCounts();
-  await seedCandidatesIfEmpty(election.positions, candidateCounts);
+  for (const position of election.positions || []) {
+    const key = normalizePosition(position);
+    const localCount = Array.isArray(nomineesByPosition[position]) ? nomineesByPosition[position].length : 0;
+    if (!candidateCounts[key] && localCount) candidateCounts[key] = localCount;
+  }
   renderPositions(election.positions, election.status, userVotes, candidateCounts);
 
   const votedCount = Object.keys(userVotes || {}).length;

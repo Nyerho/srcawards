@@ -101,8 +101,55 @@ function normalizePosition(value) {
     .trim();
 }
 
+function normalizeCandidateName(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function candidateDocId(positionKey, nameKey) {
+  const raw = `${positionKey}__${nameKey}`;
+  return raw.replace(/[\/#?[\]]/g, '_');
+}
+
 function safeDocId(value) {
   return String(value || '').trim().replace(/[\/#?\[\]]/g, '_');
+}
+
+const nomineesByPosition = {
+  'MOST CREATIVE': ['Maron', 'Boy TRYBE', 'Nolan', 'Ceejay', 'Khrome AI'],
+  'MOST INFLUENTIAL': ['Albert (DOS)', 'Tee is the Tea', 'Harriet', 'Big Hemsel( Masa Republic)', 'Pretty Ella aka Big Ella'],
+  'ENTREPRENEUR OF THE YEAR': [
+    'Onyibe Joel ( Tech Odyssey, Jbanks Media)',
+    'Eyione Meyiwa ( Luxurious)',
+    'Dolor Ambrose (Mega Cleaning Service, Mega Apparels)',
+    'Esiso Nyerhovwo (Eon)',
+    'Igbinosa Tejiri (Teejay Luxury)',
+    'Akponokan Harriet (Harriet Standard)'
+  ],
+  'BRAND OF THE YEAR': ['Everything Shirt', 'Tech Odyssey', 'Tare’s Glam', 'Scents by Sonya', 'Scents by Gratias', 'Harriet Standard'],
+  'MOST ACTIVE SRC MEMBER': [
+    'Omiagbemi David ( President)',
+    'Aya.O. Nadine ( Vice President)',
+    'Idemive Russell ( Director of Socials)',
+    'Avworhokai. O. Albert ( Director of Sports)',
+    'Olubenga Temitope ( Director of Welfare)',
+    'Eyione Gift ( Financial Secretary)',
+    'Efetobore Josephine ( Treasurer)',
+    'Beroh Elizabeth ( General Secretary)',
+    'Uti.O.Lucy (Assistant General Secretary)',
+    'Anthony Amanda.O. (Fellowship President)',
+    'Okwoho.O. Festus ( Assistant Fellowship President)',
+    'Emevor Oghenekevwe ( PRO)'
+  ],
+  'FRESHER OF THE YEAR (MALE)': ['Eghreobiyare Aaron Ogaga', 'Bryan Ogbuenyi', 'Tamaraodubo-Diwere Derrick', 'Desmond', 'Answer Njika'],
+  'FRESHER OF THE YEAR (FEMALE)': ['Uwadiego Chinedum Victory', 'Ibomo Olivia', 'Christopher Deborah', 'Pereinei Dedefina Success']
+};
+
+function getNomineesForPosition(pos) {
+  const target = String(pos || '').trim().toLowerCase();
+  for (const k of Object.keys(nomineesByPosition)) {
+    if (String(k).toLowerCase() === target) return nomineesByPosition[k] || [];
+  }
+  return [];
 }
 
 function safeErrorMessage(e) {
@@ -294,14 +341,28 @@ async function loadElectionAndCandidates() {
       if (candidates.length) {
         grid.innerHTML = '';
       } else {
-        grid.innerHTML = `
-          <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
-            <h3 class="font-semibold text-lg">No nominated candidates yet</h3>
-            <p class="text-gray-600 mt-1">The admin has not added nominees for ${position}.</p>
-            <a href="dashboard.html" class="inline-block mt-4 text-primary">Back to positions</a>
-          </div>
-        `;
-        return;
+        const localNominees = getNomineesForPosition(position);
+        if (localNominees.length) {
+          candidates = localNominees.map((name) => {
+            const nameKey = normalizeCandidateName(name);
+            return {
+              id: candidateDocId(positionKey, nameKey),
+              name,
+              position,
+              image: avatarDataUri(name),
+              votes: 0
+            };
+          });
+        } else {
+          grid.innerHTML = `
+            <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
+              <h3 class="font-semibold text-lg">No nominated candidates yet</h3>
+              <p class="text-gray-600 mt-1">No nominees found for ${position}.</p>
+              <a href="dashboard.html" class="inline-block mt-4 text-primary">Back to categories</a>
+            </div>
+          `;
+          return;
+        }
       }
     } else {
     grid.innerHTML = `
@@ -315,14 +376,28 @@ async function loadElectionAndCandidates() {
     }
   }
   if (!candidates.length) {
-    grid.innerHTML = `
-      <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
-        <h3 class="font-semibold text-lg">No nominated candidates yet</h3>
-        <p class="text-gray-600 mt-1">The admin has not added nominees for ${position}.</p>
-        <a href="dashboard.html" class="inline-block mt-4 text-primary">Back to positions</a>
-      </div>
-    `;
-    return;
+    const localNominees = getNomineesForPosition(position);
+    if (localNominees.length) {
+      candidates = localNominees.map((name) => {
+        const nameKey = normalizeCandidateName(name);
+        return {
+          id: candidateDocId(positionKey, nameKey),
+          name,
+          position,
+          image: avatarDataUri(name),
+          votes: 0
+        };
+      });
+    } else {
+      grid.innerHTML = `
+        <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
+          <h3 class="font-semibold text-lg">No nominated candidates yet</h3>
+          <p class="text-gray-600 mt-1">No nominees found for ${position}.</p>
+          <a href="dashboard.html" class="inline-block mt-4 text-primary">Back to categories</a>
+        </div>
+      `;
+      return;
+    }
   }
   candidates.forEach(candidate => {
     const card = document.createElement('div');
@@ -419,10 +494,10 @@ window.submitVote = function () {
       }
 
       const candidateSnap = await tx.get(candidateRef);
-      if (!candidateSnap.exists) throw new Error('CANDIDATE_MISSING');
-
-      const currentVotes = candidateSnap.data()?.votes ?? 0;
-      tx.update(candidateRef, { votes: currentVotes + 1 });
+      if (candidateSnap.exists) {
+        const currentVotes = candidateSnap.data()?.votes ?? 0;
+        tx.update(candidateRef, { votes: currentVotes + 1 });
+      }
       tx.set(voteRef, {
         matric,
         voterName,
