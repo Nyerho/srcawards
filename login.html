@@ -80,14 +80,34 @@ const firebaseConfig = {
   messagingSenderId: "YOUR_SENDER_ID",
   appId: "YOUR_APP_ID"
 };
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
+
+function isPlaceholderFirebaseConfig(cfg) {
+  const v = (s) => String(s || '');
+  return (
+    v(cfg.apiKey).startsWith('YOUR_') ||
+    v(cfg.authDomain).includes('YOUR_PROJECT') ||
+    v(cfg.projectId).startsWith('YOUR_') ||
+    v(cfg.messagingSenderId).startsWith('YOUR_') ||
+    v(cfg.appId).startsWith('YOUR_')
+  );
+}
+
+let firebaseReady = false;
+let auth = null;
+let db = null;
+
 try {
-  db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+  if (!isPlaceholderFirebaseConfig(firebaseConfig)) {
+    firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    db = firebase.firestore();
+    try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch {}
+    firebaseReady = true;
+  }
 } catch {}
 
 const ADMIN_EMAIL = 'admin@srcstudentweekawards.com';
+const LOCAL_ADMIN_PASSWORD = 'admin123';
 
 const form = document.querySelector('form');
 const matricInput = document.getElementById('matric');
@@ -138,7 +158,7 @@ function setMode(nextMode) {
 function resetSubmit() {
   submitBtn.disabled = false;
   submitBtn.classList.remove('opacity-50', 'pointer-events-none');
-  submitBtn.innerText = 'Login & Proceed';
+  submitBtn.innerText = loginMode === 'admin' ? 'Login as Admin' : 'Login & Proceed';
 }
 function navigate(path) {
   try {
@@ -179,7 +199,7 @@ form.addEventListener('submit', e => {
 
   // clear previous session
   localStorage.removeItem('currentUser');
-  try { auth.signOut(); } catch {}
+  try { auth && auth.signOut && auth.signOut(); } catch {}
 
   /* ===== ADMIN ===== */
   if (loginMode === 'admin') {
@@ -189,13 +209,24 @@ form.addEventListener('submit', e => {
         resetSubmit();
         return;
       }
+      if (!firebaseReady) {
+        if (password !== LOCAL_ADMIN_PASSWORD) {
+          alert('Invalid admin password');
+          resetSubmit();
+          return;
+        }
+        localStorage.setItem('currentUser', JSON.stringify({
+          matric: 'ADMIN',
+          role: 'admin',
+          uid: 'LOCAL'
+        }));
+        navigate('admin.html');
+        return;
+      }
+
       const cred = await auth.signInWithEmailAndPassword(ADMIN_EMAIL, password);
       const uid = cred?.user?.uid || '';
-      localStorage.setItem('currentUser', JSON.stringify({
-        matric: 'ADMIN',
-        role: 'admin',
-        uid
-      }));
+      localStorage.setItem('currentUser', JSON.stringify({ matric: 'ADMIN', role: 'admin', uid }));
       navigate('admin.html');
     })().catch((e) => {
       alert(e?.message || 'Admin login failed');
@@ -227,19 +258,21 @@ form.addEventListener('submit', e => {
   }));
   navigate('dashboard.html');
   // Best-effort registration, non-blocking
-  setTimeout(async () => {
-    try {
-      const voterRef = db.collection('voters').doc(safeDocId(normalizedMatric));
-      const now = firebase.firestore.FieldValue.serverTimestamp();
-      await voterRef.set({
-        matric: normalizedMatric,
-        faculty: 'ALL',
-        createdAt: now,
-        lastLoginAt: now,
-        completedAt: null
-      }, { merge: true });
-    } catch {}
-  }, 200);
+  if (firebaseReady) {
+    setTimeout(async () => {
+      try {
+        const voterRef = db.collection('voters').doc(safeDocId(normalizedMatric));
+        const now = firebase.firestore.FieldValue.serverTimestamp();
+        await voterRef.set({
+          matric: normalizedMatric,
+          faculty: 'ALL',
+          createdAt: now,
+          lastLoginAt: now,
+          completedAt: null
+        }, { merge: true });
+      } catch {}
+    }, 200);
+  }
 });
 </script>
 

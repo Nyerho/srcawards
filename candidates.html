@@ -54,10 +54,26 @@ const firebaseConfig = {
   appId: "YOUR_APP_ID"
 };
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+function isPlaceholderFirebaseConfig(cfg) {
+  const v = (s) => String(s || '');
+  return (
+    v(cfg.apiKey).startsWith('YOUR_') ||
+    v(cfg.authDomain).includes('YOUR_PROJECT') ||
+    v(cfg.projectId).startsWith('YOUR_') ||
+    v(cfg.messagingSenderId).startsWith('YOUR_') ||
+    v(cfg.appId).startsWith('YOUR_')
+  );
+}
+
+let firebaseReady = false;
+let db = null;
 try {
-  db.settings({ experimentalForceLongPolling: true, merge: true });
+  if (!isPlaceholderFirebaseConfig(firebaseConfig)) {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch {}
+    firebaseReady = true;
+  }
 } catch {}
 
 /* ================== BASIC SETUP ================== */
@@ -197,25 +213,95 @@ async function getSnapWithTimeout(promise, timeoutMs) {
   }
 }
 
-// Render skeleton cards immediately to avoid perceived delay
-(function renderSkeleton() {
-  grid.innerHTML = '';
-  const count = 6;
-  for (let i = 0; i < count; i++) {
-    const card = document.createElement('div');
-    card.className = 'bg-white rounded-xl shadow p-6 text-center animate-pulse';
-    card.innerHTML = `
-      <div class="w-24 h-24 sm:w-32 sm:h-32 mx-auto rounded-full bg-gray-200"></div>
-      <div class="mt-4 h-4 bg-gray-200 rounded mx-auto" style="width: 60%"></div>
-      <div class="mt-2 h-4 bg-gray-200 rounded mx-auto" style="width: 40%"></div>
-      <button class="mt-6 w-full border bg-gray-200 text-transparent py-2 rounded" disabled>Vote</button>
-    `;
-    grid.appendChild(card);
+function loadLocalVotes() {
+  try {
+    const raw = localStorage.getItem('localVotes_v1');
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
+}
+
+function saveLocalVotes(list) {
+  try {
+    const capped = Array.isArray(list) ? list.slice(-5000) : [];
+    localStorage.setItem('localVotes_v1', JSON.stringify(capped));
+  } catch {}
+}
+
+function upsertLocalVote(record) {
+  try {
+    const list = loadLocalVotes();
+    const id = String(record?.id || '');
+    if (!id) return;
+    const idx = list.findIndex(v => String(v?.id || '') === id);
+    if (idx >= 0) list[idx] = { ...list[idx], ...record };
+    else list.push(record);
+    saveLocalVotes(list);
+  } catch {}
+}
+
+function hasLocalVote(matric, positionKey) {
+  const safeMatric = String(matric || '').trim().toUpperCase().replace(/[\/#?\[\]]/g, '_');
+  const safePositionKey = String(positionKey || '').trim().toLowerCase().replace(/[\/#?\[\]]/g, '_');
+  const id = `${safeMatric}_${safePositionKey}`;
+  return loadLocalVotes().some(v => String(v?.id || '') === id);
+}
+
+function renderCandidates(list) {
+  candidates = Array.isArray(list) ? list : [];
+  grid.innerHTML = '';
+
+  if (!candidates.length) {
+    grid.innerHTML = `
+      <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
+        <h3 class="font-semibold text-lg">No nominated candidates yet</h3>
+        <p class="text-gray-600 mt-1">No nominees found for ${position}.</p>
+        <a href="dashboard.html" class="inline-block mt-4 text-primary">Back to categories</a>
+      </div>
+    `;
+    return;
+  }
+
+  candidates.forEach(candidate => {
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-xl shadow p-6 text-center mciu-card transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg';
+    const image = candidate.image || avatarDataUri(candidate.name);
+
+    card.innerHTML = `
+      <img src="${image}" loading="lazy" class="w-24 h-24 sm:w-32 sm:h-32 mx-auto rounded-full object-cover">
+      <h3 class="mt-4 font-semibold">${candidate.name}</h3>
+      <button class="mt-6 w-full mciu-btn py-2 rounded">Vote</button>
+    `;
+
+    card.querySelector('button').onclick = () => confirmVote(candidate.id);
+    grid.appendChild(card);
+  });
+}
+
+(function renderLocalFirstPaint() {
+  const positionKey = normalizePosition(position);
+  const localNominees = getNomineesForPosition(position);
+  const localList = localNominees.map((name) => {
+    const nameKey = normalizeCandidateName(name);
+    return {
+      id: candidateDocId(positionKey, nameKey),
+      name,
+      position,
+      image: avatarDataUri(name),
+      votes: 0
+    };
+  });
+  renderCandidates(localList);
 })();
 
 async function loadElectionAndCandidates() {
   const positionKey = normalizePosition(position);
+
+  if (!firebaseReady) {
+    return;
+  }
 
   if (typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
     throw new Error('OFFLINE');
@@ -231,8 +317,8 @@ async function loadElectionAndCandidates() {
     const [voterRes, electionRes, byKeyRes, legacyRes] = await Promise.all([
       getSnapWithTimeout(db.collection('voters').doc(safeDocId(String(currentUser?.matric || '').toUpperCase())).get(), 12000),
       getSnapWithTimeout(db.collection('election').doc('current').get(), 12000),
-      getSnapWithTimeout(db.collection('candidates').where('positionKey', '==', positionKey).get(), 20000),
-      getSnapWithTimeout(db.collection('candidates').where('position', '==', position).get(), 20000)
+      getSnapWithTimeout(db.collection('candidates').where('positionKey', '==', positionKey).get(), 12000),
+      getSnapWithTimeout(db.collection('candidates').where('position', '==', position).get(), 12000)
     ]);
 
     voterSnap = voterRes.snap;
@@ -242,19 +328,7 @@ async function loadElectionAndCandidates() {
     candidatesErr = byKeyRes.error || legacyRes.error || null;
 
     if (!byKeySnap && !legacySnap && String(byKeyRes.error?.message || '') === 'timeout' && String(legacyRes.error?.message || '') === 'timeout') {
-      grid.innerHTML = `
-        <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
-          <h3 class="font-semibold text-lg">Still connecting…</h3>
-          <p class="text-gray-600 mt-1">Your network is slow or blocking Firebase. Retrying…</p>
-        </div>
-      `;
-      const [byKeyRes2, legacyRes2] = await Promise.all([
-        getSnapWithTimeout(db.collection('candidates').where('positionKey', '==', positionKey).get(), 35000),
-        getSnapWithTimeout(db.collection('candidates').where('position', '==', position).get(), 35000)
-      ]);
-      byKeySnap = byKeyRes2.snap;
-      legacySnap = legacyRes2.snap;
-      candidatesErr = byKeyRes2.error || legacyRes2.error || candidatesErr;
+      return;
     }
   }
 
@@ -316,116 +390,10 @@ async function loadElectionAndCandidates() {
   }
 
   list.sort((a, b) => a.name.localeCompare(b.name));
-  candidates = list;
-
-  grid.innerHTML = '';
-  if (!byKeySnap && !legacySnap) {
-    const allRes = await getSnapWithTimeout(db.collection('candidates').get(), 30000);
-    const allSnap = allRes.snap;
-    if (allSnap) {
-      const fallback = [];
-      allSnap.forEach((d) => {
-        const c = d.data() || {};
-        const key = normalizePosition(c.positionKey || c.position);
-        if (key !== positionKey) return;
-        fallback.push({
-          id: d.id,
-          name: c.name || '',
-          position: c.position || position,
-          image: c.image || null,
-          votes: c.votes ?? 0
-        });
-      });
-      fallback.sort((a, b) => a.name.localeCompare(b.name));
-      candidates = fallback;
-      if (candidates.length) {
-        grid.innerHTML = '';
-      } else {
-        const localNominees = getNomineesForPosition(position);
-        if (localNominees.length) {
-          candidates = localNominees.map((name) => {
-            const nameKey = normalizeCandidateName(name);
-            return {
-              id: candidateDocId(positionKey, nameKey),
-              name,
-              position,
-              image: avatarDataUri(name),
-              votes: 0
-            };
-          });
-        } else {
-          grid.innerHTML = `
-            <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
-              <h3 class="font-semibold text-lg">No nominated candidates yet</h3>
-              <p class="text-gray-600 mt-1">No nominees found for ${position}.</p>
-              <a href="dashboard.html" class="inline-block mt-4 text-primary">Back to categories</a>
-            </div>
-          `;
-          return;
-        }
-      }
-    } else {
-    grid.innerHTML = `
-        <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
-          <h3 class="font-semibold text-lg">Could not load candidates</h3>
-          <p class="text-gray-600 mt-1">${safeErrorMessage(candidatesErr || allRes.error || new Error('timeout'))}</p>
-          <button class="mt-4 mciu-btn px-5 py-2 rounded" onclick="window.location.reload()">Retry</button>
-        </div>
-      `;
-      return;
-    }
-  }
-  if (!candidates.length) {
-    const localNominees = getNomineesForPosition(position);
-    if (localNominees.length) {
-      candidates = localNominees.map((name) => {
-        const nameKey = normalizeCandidateName(name);
-        return {
-          id: candidateDocId(positionKey, nameKey),
-          name,
-          position,
-          image: avatarDataUri(name),
-          votes: 0
-        };
-      });
-    } else {
-      grid.innerHTML = `
-        <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
-          <h3 class="font-semibold text-lg">No nominated candidates yet</h3>
-          <p class="text-gray-600 mt-1">No nominees found for ${position}.</p>
-          <a href="dashboard.html" class="inline-block mt-4 text-primary">Back to categories</a>
-        </div>
-      `;
-      return;
-    }
-  }
-  candidates.forEach(candidate => {
-    const card = document.createElement('div');
-    card.className = 'bg-white rounded-xl shadow p-6 text-center mciu-card transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg';
-    const image = candidate.image || avatarDataUri(candidate.name);
-
-    card.innerHTML = `
-      <img src="${image}" loading="lazy" class="w-24 h-24 sm:w-32 sm:h-32 mx-auto rounded-full object-cover">
-      <h3 class="mt-4 font-semibold">${candidate.name}</h3>
-      <button class="mt-6 w-full mciu-btn py-2 rounded">
-        Vote
-      </button>
-    `;
-
-    card.querySelector('button').onclick = () => confirmVote(candidate.id);
-    grid.appendChild(card);
-  });
+  if (list.length) renderCandidates(list);
 }
 
-loadElectionAndCandidates().catch((e) => {
-  grid.innerHTML = `
-    <div class="bg-white rounded-xl shadow p-6 md:col-span-3">
-      <h3 class="font-semibold text-lg">Could not load candidates</h3>
-      <p class="text-gray-600 mt-1">${safeErrorMessage(e)}</p>
-      <button class="mt-4 mciu-btn px-5 py-2 rounded" onclick="window.location.reload()">Retry</button>
-    </div>
-  `;
-});
+loadElectionAndCandidates().catch(() => {});
 
 /* ================== VOTING ================== */
 
@@ -465,17 +433,36 @@ window.submitVote = function () {
     const safeMatric = matric.replace(/[\/#?\[\]]/g, '_');
     const safePositionKey = positionKey.replace(/[\/#?\[\]]/g, '_');
     const voteId = `${safeMatric}_${safePositionKey}`;
-    const voteRef = db.collection('votes').doc(voteId);
-    const legacyVoteId = `${safeMatric}_${position.replace(/[\/#?\[\]]/g, '_')}`;
-    const legacyVoteRef = legacyVoteId === voteId ? null : db.collection('votes').doc(legacyVoteId);
-    const candidateRef = db.collection('candidates').doc(selectedCandidateId);
     const voterName = String(document.getElementById('voterName')?.value || '').trim().replace(/\s+/g, ' ');
     if (!voterName) throw new Error('Enter your name to continue');
+
     try {
       const u = JSON.parse(localStorage.getItem('currentUser') || 'null') || {};
       u.name = voterName;
       localStorage.setItem('currentUser', JSON.stringify(u));
     } catch {}
+
+    if (!firebaseReady) {
+      if (hasLocalVote(matric, positionKey)) throw new Error('ALREADY_VOTED');
+      upsertLocalVote({
+        id: voteId,
+        matric,
+        voterName,
+        position,
+        positionKey,
+        candidateId: selectedCandidateId,
+        candidateName: selectedCandidateName,
+        createdAt: new Date().toISOString()
+      });
+      window.location.href = 'dashboard.html';
+      return;
+    }
+
+    const voteRef = db.collection('votes').doc(voteId);
+    const legacyVoteId = `${safeMatric}_${position.replace(/[\/#?\[\]]/g, '_')}`;
+    const legacyVoteRef = legacyVoteId === voteId ? null : db.collection('votes').doc(legacyVoteId);
+    const candidateRef = db.collection('candidates').doc(selectedCandidateId);
+
     try {
       await db.collection('voters').doc(safeDocId(matric)).set({
         matric,
@@ -507,6 +494,17 @@ window.submitVote = function () {
         candidateName: selectedCandidateName,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
+    });
+
+    upsertLocalVote({
+      id: voteId,
+      matric,
+      voterName,
+      position,
+      positionKey,
+      candidateId: selectedCandidateId,
+      candidateName: selectedCandidateName,
+      createdAt: new Date().toISOString()
     });
 
     window.location.href = 'dashboard.html';

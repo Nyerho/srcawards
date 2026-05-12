@@ -88,6 +88,7 @@
           <tbody id="votesTableBody"></tbody>
         </table>
       </div>
+      <button id="loadMoreVotesBtn" class="mt-3 w-full border py-2 rounded hidden">Load more votes</button>
 
       <hr class="my-6">
 
@@ -126,11 +127,28 @@
       appId: "YOUR_APP_ID"
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
+    function isPlaceholderFirebaseConfig(cfg) {
+      const v = (s) => String(s || '');
+      return (
+        v(cfg.apiKey).startsWith('YOUR_') ||
+        v(cfg.authDomain).includes('YOUR_PROJECT') ||
+        v(cfg.projectId).startsWith('YOUR_') ||
+        v(cfg.messagingSenderId).startsWith('YOUR_') ||
+        v(cfg.appId).startsWith('YOUR_')
+      );
+    }
+
+    let firebaseReady = false;
+    let auth = null;
+    let db = null;
     try {
-      db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+      if (!isPlaceholderFirebaseConfig(firebaseConfig)) {
+        firebase.initializeApp(firebaseConfig);
+        auth = firebase.auth();
+        db = firebase.firestore();
+        try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch {}
+        firebaseReady = true;
+      }
     } catch {}
 
     const currentUser = JSON.parse(localStorage.getItem('currentUser'));
@@ -175,7 +193,7 @@
       'FRESHER OF THE YEAR (MALE)': ['Eghreobiyare Aaron Ogaga', 'Bryan Ogbuenyi', 'Tamaraodubo-Diwere Derrick', 'Desmond', 'Answer Njika'],
       'FRESHER OF THE YEAR (FEMALE)': ['Uwadiego Chinedum Victory', 'Ibomo Olivia', 'Christopher Deborah', 'Pereinei Dedefina Success']
     };
-    const electionRef = db.collection('election').doc('current');
+    const electionRef = firebaseReady ? db.collection('election').doc('current') : null;
 
     const openBtn = document.getElementById('openBtn');
     const closeBtn = document.getElementById('closeBtn');
@@ -190,6 +208,7 @@
     const toast = document.getElementById('toast');
     const candidateList = document.getElementById('candidateList');
     const votesTableBody = document.getElementById('votesTableBody');
+    const loadMoreVotesBtn = document.getElementById('loadMoreVotesBtn');
     const votersTableBody = document.getElementById('votersTableBody');
     const restartVotingBtn = document.getElementById('restartVotingBtn');
     const restoreCandidatesBtn = document.getElementById('restoreCandidatesBtn');
@@ -202,6 +221,20 @@
         promise,
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
       ]);
+    }
+
+    function loadLocalVotes() {
+      try {
+        const raw = localStorage.getItem('localVotes_v1');
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function normalizeMatric(value) {
+      return String(value || '').trim().toUpperCase();
     }
 
     function normalizePosition(value) {
@@ -232,6 +265,7 @@
     }
 
     async function requireAdmin() {
+      if (!firebaseReady) return false;
       const user = auth.currentUser;
       if (!user) return false;
       try {
@@ -400,6 +434,30 @@
     async function downloadVotingCsv() {
       setButtonLoading(downloadCsvBtn, true, 'Preparing...', 'Download CSV');
       try {
+        if (!firebaseReady) {
+          const votes = loadLocalVotes()
+            .slice()
+            .sort((a, b) => String(b?.createdAt || '').localeCompare(String(a?.createdAt || '')));
+          const header = ['matric', 'voterName', 'position', 'positionKey', 'candidateId', 'candidateName', 'votedAt', 'completedAt'];
+          const rows = votes.map(v => ({
+            matric: normalizeMatric(v?.matric || ''),
+            voterName: v?.voterName || '',
+            position: v?.position || '',
+            positionKey: v?.positionKey || '',
+            candidateId: v?.candidateId || '',
+            candidateName: v?.candidateName || '',
+            votedAt: v?.createdAt || '',
+            completedAt: ''
+          }));
+          const csv = [header.join(',')]
+            .concat(rows.map(r => header.map(k => toCsvCell(r[k])).join(',')))
+            .join('\n');
+          const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+          downloadTextFile(`src-student-week-awards-2026-votes-${stamp}.csv`, csv, 'text/csv;charset=utf-8');
+          showToast('CSV downloaded');
+          return;
+        }
+
         const votesSnap = await withTimeout(db.collection('votes').orderBy('createdAt', 'desc').get(), 20000);
         const votersSnap = await withTimeout(db.collection('voters').get(), 20000);
         const candidatesSnap = await withTimeout(db.collection('candidates').get(), 20000);
@@ -748,30 +806,94 @@
     }
 
     async function renderVoteRecords() {
-      votesTableBody.innerHTML = '';
-      try {
-        const snap = await withTimeout(db.collection('votes').orderBy('createdAt', 'desc').limit(200).get(), 7000);
+      let votesLastDoc = null;
+      let remoteDone = false;
+      const seen = new Set();
+
+      function appendRow(v, idHint) {
+        const id = String(idHint || '');
+        if (id && seen.has(id)) return;
+        if (id) seen.add(id);
+        const matric = v.matric || '';
+        const name = v.voterName || '';
+        const position = v.position || '';
+        const votedFor = v.candidateName || v.candidateId || '';
+        const tr = document.createElement('tr');
+        tr.className = 'border-t';
+        tr.innerHTML = `
+          <td class="p-3 whitespace-nowrap">${matric}</td>
+          <td class="p-3 whitespace-nowrap">${name}</td>
+          <td class="p-3 whitespace-nowrap">${position}</td>
+          <td class="p-3 whitespace-nowrap">${votedFor}</td>
+        `;
+        votesTableBody.appendChild(tr);
+      }
+
+      function updateLoadMore() {
+        if (!loadMoreVotesBtn) return;
+        const shouldShow = firebaseReady && !remoteDone;
+        loadMoreVotesBtn.classList.toggle('hidden', !shouldShow);
+        loadMoreVotesBtn.disabled = !shouldShow;
+      }
+
+      async function loadRemotePage() {
+        if (!firebaseReady) return;
+        if (remoteDone) return;
+        let q = db.collection('votes').orderBy('createdAt', 'desc').limit(200);
+        if (votesLastDoc) q = q.startAfter(votesLastDoc);
+        const snap = await withTimeout(q.get(), 9000);
+        if (snap.empty) {
+          remoteDone = true;
+          updateLoadMore();
+          return;
+        }
+        votesLastDoc = snap.docs[snap.docs.length - 1];
         snap.forEach(s => {
           const v = s.data() || {};
-          const matric = v.matric || '';
-          const name = v.voterName || '';
-          const position = v.position || '';
-          const votedFor = v.candidateName || v.candidateId || '';
-          const tr = document.createElement('tr');
-          tr.className = 'border-t';
-          tr.innerHTML = `
-            <td class="p-3 whitespace-nowrap">${matric}</td>
-            <td class="p-3 whitespace-nowrap">${name}</td>
-            <td class="p-3 whitespace-nowrap">${position}</td>
-            <td class="p-3 whitespace-nowrap">${votedFor}</td>
-          `;
-          votesTableBody.appendChild(tr);
+          appendRow(v, s.id);
         });
+        if (snap.size < 200) remoteDone = true;
+        updateLoadMore();
+      }
+
+      votesTableBody.innerHTML = '';
+      const localVotes = loadLocalVotes()
+        .slice()
+        .sort((a, b) => String(b?.createdAt || '').localeCompare(String(a?.createdAt || '')));
+      for (const v of localVotes) {
+        const id = String(v?.id || '');
+        appendRow({
+          matric: normalizeMatric(v?.matric || ''),
+          voterName: v?.voterName || '',
+          position: v?.position || '',
+          candidateId: v?.candidateId || '',
+          candidateName: v?.candidateName || ''
+        }, id);
+      }
+
+      try {
+        await loadRemotePage();
+        updateLoadMore();
       } catch (e) {
+        updateLoadMore();
+        if (!firebaseReady) return;
         const tr = document.createElement('tr');
         tr.className = 'border-t';
         tr.innerHTML = `<td class="p-3 text-red-700" colspan="4">Could not load votes: ${safeErrorMessage(e)}</td>`;
         votesTableBody.appendChild(tr);
+      }
+
+      if (loadMoreVotesBtn) {
+        loadMoreVotesBtn.onclick = async () => {
+          setButtonLoading(loadMoreVotesBtn, true, 'Loading...', 'Load more votes');
+          try {
+            await loadRemotePage();
+          } catch (e) {
+            showToast(`Could not load more votes: ${safeErrorMessage(e)}`, 'error');
+          } finally {
+            setButtonLoading(loadMoreVotesBtn, false, 'Loading...', 'Load more votes');
+          }
+        };
       }
     }
 
@@ -848,6 +970,19 @@
         await Promise.resolve();
       } catch {}
 
+      if (!firebaseReady) {
+        [openBtn, closeBtn, resetBtn, addPositionBtn, addCandidateBtn, restartVotingBtn, restoreCandidatesBtn]
+          .filter(Boolean)
+          .forEach(btn => {
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'pointer-events-none');
+          });
+        candidateList.innerHTML = `<div class="text-sm text-gray-600">Firebase is not configured. Only local vote records are available.</div>`;
+        votersTableBody.innerHTML = `<tr class="border-t"><td class="p-3 text-gray-600" colspan="5">Firebase is not configured.</td></tr>`;
+        await renderVoteRecords();
+        return;
+      }
+
       ensureElectionDoc()
         .then(() => renderPositionOptions())
         .catch(() => {});
@@ -874,13 +1009,23 @@
     if (logoutLink) {
       logoutLink.addEventListener('click', (e) => {
         e.preventDefault();
-        try { auth.signOut(); } catch {}
+        try { auth && auth.signOut && auth.signOut(); } catch {}
         try { localStorage.removeItem('currentUser'); } catch {}
         window.location.href = 'login.html';
       });
     }
 
-    auth.onAuthStateChanged(async (user) => {
+    if (!currentUser || currentUser.role !== 'admin') {
+      showToast('Admin sign-in required', 'error');
+      setTimeout(() => { window.location.href = 'login.html'; }, 600);
+    } else if (currentUser.uid === 'LOCAL') {
+      showToast(firebaseReady ? 'Signed in as local admin' : 'Local admin mode', 'success');
+      refreshAll().catch(e => showToast(`Init failed: ${safeErrorMessage(e)}`, 'error'));
+    } else if (!firebaseReady) {
+      showToast('Firebase not configured. Use admin123 to sign in.', 'error');
+      setTimeout(() => { window.location.href = 'login.html'; }, 900);
+    } else {
+      auth.onAuthStateChanged(async (user) => {
       if (!user) {
         showToast('Admin sign-in required', 'error');
         setTimeout(() => { window.location.href = 'login.html'; }, 600);
@@ -898,7 +1043,8 @@
         localStorage.setItem('currentUser', JSON.stringify({ matric: 'ADMIN', role: 'admin', uid: user.uid }));
       }
       refreshAll().catch(e => showToast(`Init failed: ${safeErrorMessage(e)}`, 'error'));
-    });
+      });
+    }
   </script>
 </body>
 </html>

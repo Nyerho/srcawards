@@ -78,10 +78,26 @@ const firebaseConfig = {
   appId: "YOUR_APP_ID"
 };
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+function isPlaceholderFirebaseConfig(cfg) {
+  const v = (s) => String(s || '');
+  return (
+    v(cfg.apiKey).startsWith('YOUR_') ||
+    v(cfg.authDomain).includes('YOUR_PROJECT') ||
+    v(cfg.projectId).startsWith('YOUR_') ||
+    v(cfg.messagingSenderId).startsWith('YOUR_') ||
+    v(cfg.appId).startsWith('YOUR_')
+  );
+}
+
+let firebaseReady = false;
+let db = null;
 try {
-  db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+  if (!isPlaceholderFirebaseConfig(firebaseConfig)) {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch {}
+    firebaseReady = true;
+  }
 } catch {}
 
 /* ===== CURRENT USER ===== */
@@ -156,6 +172,31 @@ function normalizeCandidateName(value) {
 
 function safeDocId(value) {
   return String(value || '').trim().replace(/[\/#?\[\]]/g, '_');
+}
+
+function loadLocalVotes() {
+  try {
+    const raw = localStorage.getItem('localVotes_v1');
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function localVotesMapForMatric(matric) {
+  const m = String(matric || '').trim().toUpperCase();
+  const map = {};
+  if (!m) return map;
+  const rows = loadLocalVotes();
+  for (const v of rows) {
+    const vm = String(v?.matric || '').trim().toUpperCase();
+    if (vm !== m) continue;
+    const key = normalizePosition(v?.positionKey || v?.position);
+    if (!key) continue;
+    map[key] = v?.candidateId || true;
+  }
+  return map;
 }
 
 function getInitials(name) {
@@ -256,22 +297,6 @@ async function seedCandidatesIfEmpty(positions, candidateCounts) {
   }
 }
 
-async function loadCandidateCounts() {
-  try {
-    const snap = await db.collection('candidates').get();
-    const counts = {};
-    snap.forEach(docSnap => {
-      const c = docSnap.data() || {};
-      const key = normalizePosition(c.positionKey || c.position);
-      if (!key) return;
-      counts[key] = (counts[key] || 0) + 1;
-    });
-    return counts;
-  } catch {
-    return {};
-  }
-}
-
 function renderStatus(status) {
   if (status === 'active') {
     votingStatus.innerText = 'Voting Active';
@@ -343,6 +368,17 @@ function renderPositions(positions, electionStatus, userVotes, candidateCounts) 
 }
 
 (async () => {
+  const localCounts = {};
+  for (const position of defaultPositions) {
+    const key = normalizePosition(position);
+    localCounts[key] = Array.isArray(nomineesByPosition[position]) ? nomineesByPosition[position].length : 0;
+  }
+  const localVotes = localVotesMapForMatric(currentUser.matric);
+  renderStatus('active');
+  renderPositions(defaultPositions, 'active', localVotes, localCounts);
+
+  if (!firebaseReady) return;
+
   try {
     const voterSnap = await db.collection('voters').doc(safeDocId(String(currentUser.matric || '').toUpperCase())).get();
     if (voterSnap.exists) {
@@ -356,26 +392,38 @@ function renderPositions(positions, electionStatus, userVotes, candidateCounts) 
     }
   } catch {}
 
-  const election = await loadElection();
+  const [election, remoteVotes] = await Promise.all([
+    loadElection(),
+    loadUserVotes(currentUser.matric)
+  ]);
+
+  const mergedVotes = { ...(localVotes || {}), ...(remoteVotes || {}) };
+
   renderStatus(election.status);
-  const userVotes = await loadUserVotes(currentUser.matric);
-  const candidateCounts = await loadCandidateCounts();
+  const counts = {};
   for (const position of election.positions || []) {
     const key = normalizePosition(position);
     const localCount = Array.isArray(nomineesByPosition[position]) ? nomineesByPosition[position].length : 0;
-    if (!candidateCounts[key] && localCount) candidateCounts[key] = localCount;
+    if (localCount) counts[key] = localCount;
   }
-  renderPositions(election.positions, election.status, userVotes, candidateCounts);
+  renderPositions(election.positions, election.status, mergedVotes, counts);
 
-  const votedCount = Object.keys(userVotes || {}).length;
+  const votedCount = Object.keys(mergedVotes || {}).length;
   const totalPositions = election.positions.length;
   if (totalPositions > 0 && votedCount >= totalPositions) {
     doneVotingBtn.classList.remove('hidden');
     doneVotingBtn.onclick = async () => {
       doneVotingBtn.classList.add('opacity-50', 'pointer-events-none');
-      await db.collection('voters').doc(safeDocId(String(currentUser.matric || '').toUpperCase())).set({
-        completedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
+      const matric = String(currentUser.matric || '').trim().toUpperCase();
+      const payload = {
+        matric,
+        faculty: 'ALL',
+        completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        lastLoginAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      const name = String(currentUser.name || '').trim().replace(/\s+/g, ' ');
+      if (name) payload.name = name;
+      await db.collection('voters').doc(safeDocId(matric)).set(payload, { merge: true });
       localStorage.removeItem('currentUser');
       window.location.href = 'index.html';
     };
