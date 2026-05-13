@@ -44,6 +44,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="firebase-config.js"></script>
 <script>
 const firebaseConfig = window.FIREBASE_CONFIG || {};
@@ -60,15 +61,23 @@ function isPlaceholderFirebaseConfig(cfg) {
 }
 
 let firebaseReady = false;
+let auth = null;
 let db = null;
 try {
   if (!isPlaceholderFirebaseConfig(firebaseConfig)) {
     firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
     db = firebase.firestore();
     try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch {}
     firebaseReady = true;
   }
 } catch {}
+
+if (firebaseReady && auth) {
+  try {
+    auth.signInAnonymously().catch(() => {});
+  } catch {}
+}
 
 /* ================== BASIC SETUP ================== */
 
