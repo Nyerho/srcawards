@@ -73,7 +73,12 @@
       <h2 class="text-xl font-semibold mb-4">Vote Records</h2>
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <p class="text-sm text-gray-600">Download voting data for analysis.</p>
-        <button id="downloadCsvBtn" class="mciu-btn px-4 py-2 rounded w-full sm:w-auto">Download CSV</button>
+        <div class="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <button id="downloadCsvBtn" class="mciu-btn px-4 py-2 rounded w-full sm:w-auto">Download CSV</button>
+          <button id="exportLocalVotesBtn" class="border px-4 py-2 rounded w-full sm:w-auto">Export Local Votes</button>
+          <button id="importVotesBtn" class="border px-4 py-2 rounded w-full sm:w-auto">Import Votes</button>
+          <input id="importVotesFile" type="file" accept="application/json" class="hidden">
+        </div>
       </div>
       <div class="overflow-auto border rounded">
         <table class="w-full text-sm min-w-max">
@@ -207,6 +212,9 @@
     const restartVotingBtn = document.getElementById('restartVotingBtn');
     const restoreCandidatesBtn = document.getElementById('restoreCandidatesBtn');
     const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+    const exportLocalVotesBtn = document.getElementById('exportLocalVotesBtn');
+    const importVotesBtn = document.getElementById('importVotesBtn');
+    const importVotesFile = document.getElementById('importVotesFile');
 
     let cachedPositions = [...defaultPositions];
 
@@ -225,6 +233,98 @@
       } catch {
         return [];
       }
+    }
+
+    function makeVoteId(matric, positionKey) {
+      const safeMatric = String(matric || '').trim().toUpperCase().replace(/[\/#?\[\]]/g, '_');
+      const safePositionKey = String(positionKey || '').trim().toLowerCase().replace(/[\/#?\[\]]/g, '_');
+      return `${safeMatric}_${safePositionKey}`;
+    }
+
+    function parseImportedVotes(text) {
+      const raw = JSON.parse(text);
+      if (!Array.isArray(raw)) throw new Error('Invalid file format');
+      const cleaned = [];
+      for (const v of raw) {
+        const matric = normalizeMatric(v?.matric || '');
+        const voterName = String(v?.voterName || '').trim();
+        const position = String(v?.position || '').trim();
+        const positionKey = String(v?.positionKey || '').trim().toLowerCase();
+        const candidateId = String(v?.candidateId || '').trim();
+        const candidateName = String(v?.candidateName || '').trim();
+        const createdAt = String(v?.createdAt || '').trim();
+        if (!matric || !positionKey || !candidateId) continue;
+        const id = String(v?.id || '').trim() || makeVoteId(matric, positionKey);
+        cleaned.push({ id, matric, voterName, position, positionKey, candidateId, candidateName, createdAt });
+      }
+      return cleaned;
+    }
+
+    function toFirestoreTimestampMaybe(value) {
+      try {
+        const s = String(value || '').trim();
+        if (!s) return firebase.firestore.FieldValue.serverTimestamp();
+        const d = new Date(s);
+        if (Number.isNaN(d.getTime())) return firebase.firestore.FieldValue.serverTimestamp();
+        return firebase.firestore.Timestamp.fromDate(d);
+      } catch {
+        return firebase.firestore.FieldValue.serverTimestamp();
+      }
+    }
+
+    async function importVotesToFirestore(votes) {
+      const isLocalAdmin = !!(currentUser && currentUser.uid === 'LOCAL');
+      if (!firebaseReady) throw new Error('Firebase not configured');
+      if (isLocalAdmin) throw new Error('Local admin cannot import to Firestore');
+
+      const missingCandidates = new Set();
+      let imported = 0;
+      let skipped = 0;
+
+      const queue = votes.slice();
+      const concurrency = 4;
+
+      async function worker() {
+        while (queue.length) {
+          const v = queue.shift();
+          if (!v) return;
+          const voteRef = db.collection('votes').doc(v.id);
+          const candidateRef = db.collection('candidates').doc(v.candidateId);
+          try {
+            await db.runTransaction(async (tx) => {
+              const existing = await tx.get(voteRef);
+              if (existing.exists) {
+                skipped++;
+                return;
+              }
+
+              const candidateSnap = await tx.get(candidateRef);
+              if (candidateSnap.exists) {
+                const currentVotes = candidateSnap.data()?.votes ?? 0;
+                tx.update(candidateRef, { votes: currentVotes + 1 });
+              } else {
+                missingCandidates.add(v.candidateId);
+              }
+
+              tx.set(voteRef, {
+                matric: v.matric,
+                voterName: v.voterName || '',
+                position: v.position || '',
+                positionKey: v.positionKey,
+                candidateId: v.candidateId,
+                candidateName: v.candidateName || '',
+                createdAt: toFirestoreTimestampMaybe(v.createdAt)
+              });
+            });
+            imported++;
+          } catch {
+            skipped++;
+          }
+        }
+      }
+
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
+      return { imported, skipped, missingCandidates: Array.from(missingCandidates) };
     }
 
     function normalizeMatric(value) {
@@ -1008,6 +1108,54 @@
     if (restartVotingBtn) restartVotingBtn.onclick = () => restartVoting();
     if (restoreCandidatesBtn) restoreCandidatesBtn.onclick = () => restoreCandidates();
     if (downloadCsvBtn) downloadCsvBtn.onclick = () => downloadVotingCsv();
+    if (exportLocalVotesBtn) {
+      exportLocalVotesBtn.onclick = () => {
+        const votes = loadLocalVotes();
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        downloadTextFile(`local-votes-${stamp}.json`, JSON.stringify(votes, null, 2), 'application/json;charset=utf-8');
+        showToast('Local votes exported');
+      };
+    }
+    if (importVotesBtn && importVotesFile) {
+      importVotesBtn.onclick = () => importVotesFile.click();
+      importVotesFile.addEventListener('change', async () => {
+        const file = importVotesFile.files && importVotesFile.files[0];
+        if (!file) return;
+        importVotesFile.value = '';
+        const isLocalAdmin = !!(currentUser && currentUser.uid === 'LOCAL');
+        if (!firebaseReady) {
+          showToast('Firebase is not configured on this site', 'error');
+          return;
+        }
+        if (isLocalAdmin) {
+          showToast('You are in local admin mode. Sign in with the real admin account to import.', 'error');
+          return;
+        }
+        setButtonLoading(importVotesBtn, true, 'Importing...', 'Import Votes');
+        try {
+          const text = await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result || ''));
+            r.onerror = () => reject(new Error('Could not read file'));
+            r.readAsText(file);
+          });
+          const votes = parseImportedVotes(text);
+          if (!votes.length) throw new Error('No votes found in file');
+          const result = await importVotesToFirestore(votes);
+          const msg = `Imported ${result.imported}, skipped ${result.skipped}`;
+          showToast(msg);
+          await renderVoteRecords();
+          await renderCandidates();
+          if (result.missingCandidates.length) {
+            showToast(`Some candidate IDs were missing (${result.missingCandidates.length}). Restore candidates then re-import if needed.`, 'error');
+          }
+        } catch (e) {
+          showToast(`Import failed: ${safeErrorMessage(e)}`, 'error');
+        } finally {
+          setButtonLoading(importVotesBtn, false, 'Importing...', 'Import Votes');
+        }
+      });
+    }
 
     window.addCandidate = addCandidate;
     window.deleteCandidate = deleteCandidate;
