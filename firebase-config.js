@@ -1,9 +1,9 @@
 window.FIREBASE_CONFIG = window.FIREBASE_CONFIG || {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyDRcir81tJ3zPxys8MFL_3MNSHtLJJKWIo",
+  authDomain: "mciuvoting.firebaseapp.com",
+  projectId: "mciuvoting",
+  storageBucket: "mciuvoting.firebasestorage.app",
+  messagingSenderId: "545959480192",
+  appId: "1:545959480192:web:f8444c81d7ab46459a8f65",
+  measurementId: "G-P0FT8RQLN3"
 };
-
