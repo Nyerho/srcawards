@@ -99,20 +99,30 @@
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
 <script>
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
-};
+const firebaseConfig = window.FIREBASE_CONFIG || {};
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+function isPlaceholderFirebaseConfig(cfg) {
+  const v = (s) => String(s || '');
+  return (
+    v(cfg.apiKey).startsWith('YOUR_') ||
+    v(cfg.authDomain).includes('YOUR_PROJECT') ||
+    v(cfg.projectId).startsWith('YOUR_') ||
+    v(cfg.messagingSenderId).startsWith('YOUR_') ||
+    v(cfg.appId).startsWith('YOUR_')
+  );
+}
+
+let firebaseReady = false;
+let db = null;
 try {
-  db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+  if (!isPlaceholderFirebaseConfig(firebaseConfig)) {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch {}
+    firebaseReady = true;
+  }
 } catch {}
 
 function applyStatus(electionStatus) {
@@ -135,14 +145,16 @@ function applyStatus(electionStatus) {
 
 async function loadStatus() {
   let electionStatus = 'closed';
-  try {
-    const snap = await db.collection('election').doc('current').get();
-    const d = snap.exists ? snap.data() : null;
-    if (d && (d.status === 'active' || d.status === 'closed')) {
-      electionStatus = d.status;
-      localStorage.setItem('electionStatus', electionStatus);
-    }
-  } catch {}
+  if (firebaseReady) {
+    try {
+      const snap = await db.collection('election').doc('current').get();
+      const d = snap.exists ? snap.data() : null;
+      if (d && (d.status === 'active' || d.status === 'closed')) {
+        electionStatus = d.status;
+        localStorage.setItem('electionStatus', electionStatus);
+      }
+    } catch {}
+  }
 
   if (electionStatus !== 'active' && electionStatus !== 'closed') {
     const legacy = localStorage.getItem('electionStatus');
