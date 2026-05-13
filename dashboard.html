@@ -421,7 +421,7 @@ function renderPositions(positions, electionStatus, userVotes, candidateCounts) 
 
   const remoteVotes = votesRes?.map || {};
   const remoteOk = !!votesRes?.ok;
-  if (remoteOk && Object.keys(remoteVotes).length === 0 && Object.keys(localVotes || {}).length) {
+  if (remoteOk && Object.keys(remoteVotes).length > 0 && Object.keys(localVotes || {}).length) {
     clearLocalVotesForMatric(currentUser.matric);
   }
   const refreshedLocalVotes = localVotesMapForMatric(currentUser.matric);
