@@ -964,6 +964,16 @@
         await Promise.resolve();
       } catch {}
 
+      const isLocalAdmin = !!(currentUser && currentUser.uid === 'LOCAL');
+      if (isLocalAdmin) {
+        [openBtn, closeBtn, resetBtn, addPositionBtn, addCandidateBtn, restartVotingBtn, restoreCandidatesBtn]
+          .filter(Boolean)
+          .forEach(btn => {
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'pointer-events-none');
+          });
+      }
+
       if (!firebaseReady) {
         [openBtn, closeBtn, resetBtn, addPositionBtn, addCandidateBtn, restartVotingBtn, restoreCandidatesBtn]
           .filter(Boolean)
@@ -977,9 +987,11 @@
         return;
       }
 
-      ensureElectionDoc()
-        .then(() => renderPositionOptions())
-        .catch(() => {});
+      if (!isLocalAdmin) {
+        ensureElectionDoc()
+          .then(() => renderPositionOptions())
+          .catch(() => {});
+      }
 
       Promise.allSettled([
         renderCandidates(),
