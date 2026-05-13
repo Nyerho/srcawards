@@ -133,6 +133,21 @@ function safeDocId(value) {
   return String(value || '').trim().replace(/[\/#?\[\]]/g, '_');
 }
 
+function safeVoteIdPart(value, mode) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  if (mode === 'matric') {
+    return s.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  }
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function makeVoteId(matric, positionKey) {
+  const m = safeVoteIdPart(matric, 'matric');
+  const p = safeVoteIdPart(positionKey, 'positionKey');
+  return m && p ? `${m}_${p}` : '';
+}
+
 const nomineesByPosition = {
   'MOST CREATIVE': ['Maron', 'Boy TRYBE', 'Nolan', 'Ceejay', 'Khrome AI'],
   'MOST INFLUENTIAL': ['Albert (DOS)', 'Tee is the Tea', 'Harriet', 'Big Hemsel( Masa Republic)', 'Pretty Ella aka Big Ella'],
@@ -246,10 +261,15 @@ function upsertLocalVote(record) {
 }
 
 function hasLocalVote(matric, positionKey) {
-  const safeMatric = String(matric || '').trim().toUpperCase().replace(/[\/#?\[\]]/g, '_');
-  const safePositionKey = String(positionKey || '').trim().toLowerCase().replace(/[\/#?\[\]]/g, '_');
-  const id = `${safeMatric}_${safePositionKey}`;
-  return loadLocalVotes().some(v => String(v?.id || '') === id);
+  const id = makeVoteId(matric, positionKey);
+  const legacyMatric = safeDocId(String(matric || '').trim().toUpperCase());
+  const legacyPositionKey = safeDocId(String(positionKey || '').trim().toLowerCase());
+  const legacyId = legacyMatric && legacyPositionKey ? `${legacyMatric}_${legacyPositionKey}` : '';
+  if (!id && !legacyId) return false;
+  return loadLocalVotes().some(v => {
+    const vid = String(v?.id || '');
+    return (id && vid === id) || (legacyId && vid === legacyId);
+  });
 }
 
 function renderCandidates(list) {
@@ -443,9 +463,8 @@ window.submitVote = function () {
 
   (async () => {
     const positionKey = normalizePosition(position);
-    const safeMatric = matric.replace(/[\/#?\[\]]/g, '_');
-    const safePositionKey = positionKey.replace(/[\/#?\[\]]/g, '_');
-    const voteId = `${safeMatric}_${safePositionKey}`;
+    const voteId = makeVoteId(matric, positionKey);
+    if (!voteId) throw new Error('VOTE_ID_INVALID');
     const voterName = String(document.getElementById('voterName')?.value || '').trim().replace(/\s+/g, ' ');
     if (!voterName) throw new Error('Enter your name to continue');
     if (voterName.length > 120) throw new Error('NAME_TOO_LONG');
@@ -478,8 +497,11 @@ window.submitVote = function () {
     }
 
     const voteRef = db.collection('votes').doc(voteId);
-    const legacyVoteId = `${safeMatric}_${position.replace(/[\/#?\[\]]/g, '_')}`;
-    const legacyVoteRef = legacyVoteId === voteId ? null : db.collection('votes').doc(legacyVoteId);
+    const legacyVoteIds = Array.from(new Set([
+      `${safeDocId(matric)}_${safeDocId(positionKey)}`,
+      `${safeDocId(matric)}_${safeDocId(position)}`
+    ])).filter(id => id && id !== voteId);
+    const legacyVoteRefs = legacyVoteIds.map((id) => db.collection('votes').doc(id));
 
     try {
       await db.collection('voters').doc(safeDocId(matric)).set({
@@ -493,8 +515,8 @@ window.submitVote = function () {
     await db.runTransaction(async (tx) => {
       const existingVote = await tx.get(voteRef);
       if (existingVote.exists) throw new Error('ALREADY_VOTED');
-      if (legacyVoteRef) {
-        const legacyExisting = await tx.get(legacyVoteRef);
+      for (const ref of legacyVoteRefs) {
+        const legacyExisting = await tx.get(ref);
         if (legacyExisting.exists) throw new Error('ALREADY_VOTED');
       }
       tx.set(voteRef, {
@@ -540,7 +562,23 @@ window.submitVote = function () {
     const code = err && err.code ? String(err.code) : '';
     const msg = err && err.message ? String(err.message) : '';
     if (code === 'permission-denied' || msg.toLowerCase().includes('insufficient permissions')) {
-      alert('Vote blocked by server rules. Common causes: name too long, outdated cached page, or Firebase rules not deployed. Please hard-refresh and try again.');
+      try {
+        const positionKey = normalizePosition(position);
+        const voteId = makeVoteId(currentUser?.matric, positionKey);
+        if (voteId && !hasLocalVote(currentUser?.matric, positionKey)) {
+          upsertLocalVote({
+            id: voteId,
+            matric: String(currentUser?.matric || '').trim().toUpperCase(),
+            voterName: String(document.getElementById('voterName')?.value || '').trim().replace(/\s+/g, ' '),
+            position,
+            positionKey,
+            candidateId: selectedCandidateId,
+            candidateName: selectedCandidateName,
+            createdAt: new Date().toISOString()
+          });
+        }
+      } catch {}
+      alert('Vote blocked by server rules. Your vote was saved on this device (offline mode). Please contact the admin to deploy the correct rules or import local votes.');
       return;
     }
     alert(code && msg ? `${code}: ${msg}` : (msg || 'Could not submit vote. Please try again.'));
