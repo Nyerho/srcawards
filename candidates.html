@@ -439,6 +439,12 @@ window.submitVote = function () {
     const voteId = `${safeMatric}_${safePositionKey}`;
     const voterName = String(document.getElementById('voterName')?.value || '').trim().replace(/\s+/g, ' ');
     if (!voterName) throw new Error('Enter your name to continue');
+    if (voterName.length > 120) throw new Error('NAME_TOO_LONG');
+    if (String(matric || '').length > 40) throw new Error('MATRIC_TOO_LONG');
+    if (String(positionKey || '').length > 80) throw new Error('POSITION_INVALID');
+    if (String(position || '').length > 120) throw new Error('POSITION_INVALID');
+    if (String(selectedCandidateId || '').length > 200) throw new Error('CANDIDATE_ID_INVALID');
+    const safeCandidateName = String(selectedCandidateName || '').trim().slice(0, 120);
 
     try {
       const u = JSON.parse(localStorage.getItem('currentUser') || 'null') || {};
@@ -488,7 +494,7 @@ window.submitVote = function () {
         position,
         positionKey,
         candidateId: selectedCandidateId,
-        candidateName: selectedCandidateName,
+        candidateName: safeCandidateName,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     });
@@ -510,8 +516,24 @@ window.submitVote = function () {
       alert('You already voted for this position');
       return;
     }
+    if (String(err?.message || '') === 'NAME_TOO_LONG') {
+      alert('Name is too long (max 120 characters). Please shorten it and try again.');
+      return;
+    }
+    if (String(err?.message || '') === 'MATRIC_TOO_LONG') {
+      alert('Matric number is too long. Please check it and try again.');
+      return;
+    }
+    if (String(err?.message || '') === 'POSITION_INVALID' || String(err?.message || '') === 'CANDIDATE_ID_INVALID') {
+      alert('This vote could not be submitted due to invalid data. Please refresh the page and try again.');
+      return;
+    }
     const code = err && err.code ? String(err.code) : '';
     const msg = err && err.message ? String(err.message) : '';
+    if (code === 'permission-denied' || msg.toLowerCase().includes('insufficient permissions')) {
+      alert('Vote blocked by server rules. Common causes: name too long, outdated cached page, or Firebase rules not deployed. Please hard-refresh and try again.');
+      return;
+    }
     alert(code && msg ? `${code}: ${msg}` : (msg || 'Could not submit vote. Please try again.'));
   });
 };
