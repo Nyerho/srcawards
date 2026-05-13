@@ -178,6 +178,16 @@ function loadLocalVotes() {
   }
 }
 
+function clearLocalVotesForMatric(matric) {
+  try {
+    const m = String(matric || '').trim().toUpperCase();
+    if (!m) return;
+    const rows = loadLocalVotes();
+    const filtered = rows.filter(v => String(v?.matric || '').trim().toUpperCase() !== m);
+    localStorage.setItem('localVotes_v1', JSON.stringify(filtered));
+  } catch {}
+}
+
 function localVotesMapForMatric(matric) {
   const m = String(matric || '').trim().toUpperCase();
   const map = {};
@@ -257,9 +267,9 @@ async function loadUserVotes(matric) {
       const key = normalizePosition(v?.positionKey || v?.position);
       if (key) map[key] = v?.candidateId || true;
     });
-    return map;
+    return { map, ok: true };
   } catch {
-    return {};
+    return { map: {}, ok: false };
   }
 }
 
@@ -380,20 +390,33 @@ function renderPositions(positions, electionStatus, userVotes, candidateCounts) 
       if (voter.completedAt) {
         localStorage.removeItem('currentUser');
         try {
-          await db.collection('voters').doc(safeDocId(String(currentUser.matric || '').toUpperCase())).set({
-            completedAt: null
-          }, { merge: true });
+          const matric = String(currentUser.matric || '').trim().toUpperCase();
+          const payload = {
+            matric,
+            faculty: 'ALL',
+            completedAt: null,
+            lastLoginAt: firebase.firestore.FieldValue.serverTimestamp()
+          };
+          const name = String(currentUser.name || '').trim().replace(/\s+/g, ' ');
+          if (name) payload.name = name;
+          await db.collection('voters').doc(safeDocId(matric)).set(payload, { merge: true });
         } catch {}
       }
     }
   } catch {}
 
-  const [election, remoteVotes] = await Promise.all([
+  const [election, votesRes] = await Promise.all([
     loadElection(),
     loadUserVotes(currentUser.matric)
   ]);
 
-  const mergedVotes = { ...(localVotes || {}), ...(remoteVotes || {}) };
+  const remoteVotes = votesRes?.map || {};
+  const remoteOk = !!votesRes?.ok;
+  if (remoteOk && Object.keys(remoteVotes).length === 0 && Object.keys(localVotes || {}).length) {
+    clearLocalVotesForMatric(currentUser.matric);
+  }
+  const refreshedLocalVotes = localVotesMapForMatric(currentUser.matric);
+  const mergedVotes = { ...(refreshedLocalVotes || {}), ...(remoteVotes || {}) };
 
   renderStatus(election.status);
   const counts = {};

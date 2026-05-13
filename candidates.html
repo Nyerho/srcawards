@@ -329,10 +329,20 @@ async function loadElectionAndCandidates() {
   if (voterSnap && voterSnap.exists) {
     const voter = voterSnap.data() || {};
     if (voter.completedAt) {
-      localStorage.removeItem('currentUser');
-      alert('This matric number has already completed voting and cannot login again.');
-      window.location.href = 'login.html';
-      return;
+      try {
+        const matric = String(currentUser?.matric || '').trim().toUpperCase();
+        if (matric) {
+          const payload = {
+            matric,
+            faculty: 'ALL',
+            completedAt: null,
+            lastLoginAt: firebase.firestore.FieldValue.serverTimestamp()
+          };
+          const name = String(currentUser?.name || '').trim().replace(/\s+/g, ' ');
+          if (name) payload.name = name;
+          await db.collection('voters').doc(safeDocId(matric)).set(payload, { merge: true });
+        }
+      } catch {}
     }
   }
 
