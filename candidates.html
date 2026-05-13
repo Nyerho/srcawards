@@ -84,24 +84,15 @@ function ensureAuthReady() {
   if (!firebaseReady || !auth) return Promise.resolve(null);
   if (auth.currentUser) return Promise.resolve(auth.currentUser);
   if (authReadyPromise) return authReadyPromise;
-  authReadyPromise = new Promise((resolve) => {
-    let unsub = null;
-    const done = (u) => {
-      if (unsub) {
-        try { unsub(); } catch {}
-      }
-      resolve(u || null);
-    };
-    try {
-      unsub = auth.onAuthStateChanged((u) => {
-        if (u) done(u);
-      });
-    } catch {}
-    try {
-      auth.signInAnonymously().catch(() => {});
-    } catch {}
-    setTimeout(() => done(auth.currentUser || null), 5000);
-  });
+  authReadyPromise = (async () => {
+    try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch {}
+    try { await auth.signInAnonymously(); } catch {}
+    const start = Date.now();
+    while (!auth.currentUser && Date.now() - start < 5000) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return auth.currentUser || null;
+  })();
   return authReadyPromise;
 }
 
@@ -296,6 +287,24 @@ function hasLocalVote(matric, positionKey) {
     const vid = String(v?.id || '');
     return (id && vid === id) || (legacyId && vid === legacyId);
   });
+}
+
+function saveVoteOfflineAndGo(payload) {
+  try {
+    const id = String(payload?.id || '');
+    if (!id) return;
+    upsertLocalVote({
+      id,
+      matric: String(payload?.matric || '').trim().toUpperCase(),
+      voterName: String(payload?.voterName || '').trim().replace(/\s+/g, ' '),
+      position: String(payload?.position || ''),
+      positionKey: String(payload?.positionKey || ''),
+      candidateId: String(payload?.candidateId || ''),
+      candidateName: String(payload?.candidateName || ''),
+      createdAt: payload?.createdAt || new Date().toISOString()
+    });
+  } catch {}
+  window.location.href = 'dashboard.html';
 }
 
 function renderCandidates(list) {
@@ -523,7 +532,19 @@ window.submitVote = function () {
     }
 
     await ensureAuthReady();
-    if (auth && !auth.currentUser) throw new Error('AUTH_REQUIRED');
+    if (auth && !auth.currentUser) {
+      saveVoteOfflineAndGo({
+        id: voteId,
+        matric,
+        voterName,
+        position,
+        positionKey,
+        candidateId: selectedCandidateId,
+        candidateName: selectedCandidateName,
+        createdAt: new Date().toISOString()
+      });
+      return;
+    }
 
     const voteRef = db.collection('votes').doc(voteId);
     const legacyVoteIds = Array.from(new Set([
@@ -599,7 +620,16 @@ window.submitVote = function () {
       return;
     }
     if (String(err?.message || '') === 'AUTH_REQUIRED') {
-      alert('Voting needs a Firebase session. Please refresh the page and try again.');
+      saveVoteOfflineAndGo({
+        id: makeVoteId(currentUser?.matric, normalizePosition(position)),
+        matric: String(currentUser?.matric || ''),
+        voterName: String(document.getElementById('voterName')?.value || ''),
+        position,
+        positionKey: normalizePosition(position),
+        candidateId: selectedCandidateId,
+        candidateName: selectedCandidateName,
+        createdAt: new Date().toISOString()
+      });
       return;
     }
     const code = err && err.code ? String(err.code) : '';
@@ -622,6 +652,7 @@ window.submitVote = function () {
         }
       } catch {}
       alert('Vote blocked by server rules. Your vote was saved on this device (offline mode). Please contact the admin to deploy the correct rules or import local votes.');
+      window.location.href = 'dashboard.html';
       return;
     }
     alert(code && msg ? `${code}: ${msg}` : (msg || 'Could not submit vote. Please try again.'));
