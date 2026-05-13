@@ -79,6 +79,32 @@ if (firebaseReady && auth) {
   } catch {}
 }
 
+let authReadyPromise = null;
+function ensureAuthReady() {
+  if (!firebaseReady || !auth) return Promise.resolve(null);
+  if (auth.currentUser) return Promise.resolve(auth.currentUser);
+  if (authReadyPromise) return authReadyPromise;
+  authReadyPromise = new Promise((resolve) => {
+    let unsub = null;
+    const done = (u) => {
+      if (unsub) {
+        try { unsub(); } catch {}
+      }
+      resolve(u || null);
+    };
+    try {
+      unsub = auth.onAuthStateChanged((u) => {
+        if (u) done(u);
+      });
+    } catch {}
+    try {
+      auth.signInAnonymously().catch(() => {});
+    } catch {}
+    setTimeout(() => done(auth.currentUser || null), 5000);
+  });
+  return authReadyPromise;
+}
+
 /* ================== BASIC SETUP ================== */
 
 const params = new URLSearchParams(window.location.search);
@@ -496,6 +522,9 @@ window.submitVote = function () {
       return;
     }
 
+    await ensureAuthReady();
+    if (auth && !auth.currentUser) throw new Error('AUTH_REQUIRED');
+
     const voteRef = db.collection('votes').doc(voteId);
     const legacyVoteIds = Array.from(new Set([
       `${safeDocId(matric)}_${safeDocId(positionKey)}`,
@@ -512,14 +541,17 @@ window.submitVote = function () {
       }, { merge: true });
     } catch {}
 
-    await db.runTransaction(async (tx) => {
-      const existingVote = await tx.get(voteRef);
-      if (existingVote.exists) throw new Error('ALREADY_VOTED');
-      for (const ref of legacyVoteRefs) {
-        const legacyExisting = await tx.get(ref);
-        if (legacyExisting.exists) throw new Error('ALREADY_VOTED');
-      }
-      tx.set(voteRef, {
+    const [existingVote, ...legacyVotes] = await Promise.all([
+      voteRef.get(),
+      ...legacyVoteRefs.map((ref) => ref.get().catch(() => null))
+    ]);
+    if (existingVote.exists) throw new Error('ALREADY_VOTED');
+    for (const snap of legacyVotes) {
+      if (snap && snap.exists) throw new Error('ALREADY_VOTED');
+    }
+
+    try {
+      await voteRef.set({
         matric,
         voterName,
         position,
@@ -528,7 +560,14 @@ window.submitVote = function () {
         candidateName: safeCandidateName,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-    });
+    } catch (e) {
+      const code = e && e.code ? String(e.code) : '';
+      if (code === 'permission-denied') {
+        const after = await voteRef.get().catch(() => null);
+        if (after && after.exists) throw new Error('ALREADY_VOTED');
+      }
+      throw e;
+    }
 
     upsertLocalVote({
       id: voteId,
@@ -557,6 +596,10 @@ window.submitVote = function () {
     }
     if (String(err?.message || '') === 'POSITION_INVALID' || String(err?.message || '') === 'CANDIDATE_ID_INVALID') {
       alert('This vote could not be submitted due to invalid data. Please refresh the page and try again.');
+      return;
+    }
+    if (String(err?.message || '') === 'AUTH_REQUIRED') {
+      alert('Voting needs a Firebase session. Please refresh the page and try again.');
       return;
     }
     const code = err && err.code ? String(err.code) : '';
