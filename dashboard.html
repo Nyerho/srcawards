@@ -177,6 +177,38 @@ function safeDocId(value) {
   return String(value || '').trim().replace(/[\/#?\[\]]/g, '_');
 }
 
+function safeVoteIdPart(value, mode) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  if (mode === 'matric') {
+    return s.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  }
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function makeVoteId(matric, positionKey) {
+  const m = safeVoteIdPart(matric, 'matric');
+  const p = safeVoteIdPart(positionKey, 'positionKey');
+  return m && p ? `${m}_${p}` : '';
+}
+
+let authReadyPromise = null;
+function ensureAuthReady() {
+  if (!firebaseReady || !auth) return Promise.resolve(null);
+  if (auth.currentUser) return Promise.resolve(auth.currentUser);
+  if (authReadyPromise) return authReadyPromise;
+  authReadyPromise = (async () => {
+    try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch {}
+    try { await auth.signInAnonymously(); } catch {}
+    const start = Date.now();
+    while (!auth.currentUser && Date.now() - start < 5000) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return auth.currentUser || null;
+  })();
+  return authReadyPromise;
+}
+
 function loadLocalVotes() {
   try {
     const raw = localStorage.getItem('localVotes_v1');
@@ -210,6 +242,43 @@ function localVotesMapForMatric(matric) {
     map[key] = v?.candidateId || true;
   }
   return map;
+}
+
+async function syncLocalVotesToFirestore(matric, remoteVotesMap) {
+  if (!firebaseReady || !db || !auth || !auth.currentUser) return;
+  const m = String(matric || '').trim().toUpperCase();
+  if (!m) return;
+  const rows = loadLocalVotes().filter(v => String(v?.matric || '').trim().toUpperCase() === m);
+  if (!rows.length) return;
+
+  const existing = remoteVotesMap || {};
+  for (const v of rows) {
+    const position = String(v?.position || '').trim();
+    const positionKey = normalizePosition(v?.positionKey || position);
+    if (!positionKey) continue;
+    if (existing[positionKey]) continue;
+
+    const voterName = String(v?.voterName || '').trim().replace(/\s+/g, ' ');
+    const candidateId = String(v?.candidateId || '').trim();
+    if (!voterName || !candidateId) continue;
+
+    const voteId = makeVoteId(m, positionKey);
+    if (!voteId) continue;
+
+    const candidateName = String(v?.candidateName || '').trim().slice(0, 120);
+    try {
+      await db.collection('votes').doc(voteId).set({
+        matric: m,
+        voterName,
+        position,
+        positionKey,
+        candidateId,
+        candidateName,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      existing[positionKey] = candidateId || true;
+    } catch {}
+  }
 }
 
 function getInitials(name) {
@@ -392,6 +461,8 @@ function renderPositions(positions, electionStatus, userVotes, candidateCounts) 
 
   if (!firebaseReady) return;
 
+  await ensureAuthReady();
+
   try {
     const voterSnap = await db.collection('voters').doc(safeDocId(String(currentUser.matric || '').toUpperCase())).get();
     if (voterSnap.exists) {
@@ -414,14 +485,24 @@ function renderPositions(positions, electionStatus, userVotes, candidateCounts) 
     }
   } catch {}
 
-  const [election, votesRes] = await Promise.all([
+  let [election, votesRes] = await Promise.all([
     loadElection(),
     loadUserVotes(currentUser.matric)
   ]);
 
+  const initialRemoteVotes = votesRes?.map || {};
+  const initialRemoteOk = !!votesRes?.ok;
+  const localCount = Object.keys(localVotes || {}).length;
+  if (localCount && auth && auth.currentUser) {
+    try {
+      await syncLocalVotesToFirestore(currentUser.matric, initialRemoteVotes);
+      votesRes = await loadUserVotes(currentUser.matric);
+    } catch {}
+  }
+
   const remoteVotes = votesRes?.map || {};
   const remoteOk = !!votesRes?.ok;
-  if (remoteOk && Object.keys(remoteVotes).length > 0 && Object.keys(localVotes || {}).length) {
+  if (remoteOk && Object.keys(remoteVotes).length > 0 && localCount) {
     clearLocalVotesForMatric(currentUser.matric);
   }
   const refreshedLocalVotes = localVotesMapForMatric(currentUser.matric);
