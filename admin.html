@@ -36,6 +36,7 @@
         <button id="openBtn" class="mciu-btn px-4 py-2 rounded w-full sm:w-auto">Open Election</button>
         <button id="closeBtn" class="mciu-btn px-4 py-2 rounded w-full sm:w-auto">Close Election</button>
         <button id="resetBtn" class="mciu-btn px-4 py-2 rounded w-full sm:w-auto">Reset Election</button>
+        <button id="applyOfficialBtn" class="border px-4 py-2 rounded w-full sm:w-auto">Apply Official List</button>
         </div>
       </div>
 
@@ -174,7 +175,7 @@
         'Igbinosa Tejiri (Teejay Luxury)',
         'Akponokan Harriet (Harriet Standard)'
       ],
-      'BRAND OF THE YEAR': ['Everything Shirt', 'Masa Clothing', 'Tech Odyssey', 'Tare’s Glam', 'Scents by Sonya', 'Scents by Gratias', 'Harriet Standard'],
+      'BRAND OF THE YEAR': ['Everything Shirt', 'Tech Odyssey', 'Tare’s Glam', 'Scents by Sonya', 'Scents by Gratias', 'Harriet Standard', 'Masa Clothing Brand'],
       'MOST ACTIVE SRC MEMBER': [
         'Omiagbemi David ( President)',
         'Aya.O. Nadine ( Vice President)',
@@ -190,13 +191,14 @@
         'Emevor Oghenekevwe ( PRO)'
       ],
       'FRESHER OF THE YEAR (MALE)': ['Eghreobiyare Aaron Ogaga', 'Bryan Ogbuenyi', 'Tamaraodubo-Diwere Derrick', 'Desmond', 'Answer Njika'],
-      'FRESHER OF THE YEAR (FEMALE)': ['Uwadiego Chinedum Victory', 'Ibomo Olivia', 'Christopher Deborah', 'Pereinei Dedefina Success', 'Imonite Excellent-God (MLS)']
+      'FRESHER OF THE YEAR (FEMALE)': ['imonite excellent (MLS)', 'Ibomo Olivia', 'Christopher Deborah', 'Pereinei Dedefina Success']
     };
     const electionRef = firebaseReady ? db.collection('election').doc('current') : null;
 
     const openBtn = document.getElementById('openBtn');
     const closeBtn = document.getElementById('closeBtn');
     const resetBtn = document.getElementById('resetBtn');
+    const applyOfficialBtn = document.getElementById('applyOfficialBtn');
     const addPositionBtn = document.getElementById('addPositionBtn');
     const newPositionName = document.getElementById('newPositionName');
     const addCandidateBtn = document.getElementById('addCandidateBtn');
@@ -712,6 +714,78 @@
       }
     }
 
+    async function applyOfficialSetup() {
+      const isLocalAdmin = !!(currentUser && currentUser.uid === 'LOCAL');
+      if (!firebaseReady) {
+        showToast('Firebase is not configured', 'error');
+        return;
+      }
+      if (isLocalAdmin) {
+        showToast('Sign in with the real admin account to apply official list', 'error');
+        return;
+      }
+      const ok = await requireAdmin();
+      if (!ok) {
+        showToast('Not authorized as admin', 'error');
+        return;
+      }
+
+      const msg = 'This will DELETE all candidates, votes and voters, then replace them with the official positions and nominees. Continue?';
+      if (!confirm(msg)) return;
+      setButtonLoading(applyOfficialBtn, true, 'Applying...', 'Apply Official List');
+      try {
+        await deleteCollection('candidates');
+        await deleteCollection('votes');
+        await deleteCollection('voters');
+        try { localStorage.removeItem('localVotes_v1'); } catch {}
+
+        const officialPositions = [...defaultPositions];
+        cachedPositions = [...officialPositions];
+        localStorage.setItem('positions', JSON.stringify(cachedPositions));
+        localStorage.setItem('electionStatus', 'active');
+
+        await withTimeout(electionRef.set({ status: 'active', positions: officialPositions }), 9000);
+        setStatus('active');
+        renderPositionOptions();
+
+        const writes = [];
+        for (const position of officialPositions) {
+          const nominees = nomineesByPosition[position] || [];
+          const positionKey = normalizePosition(position);
+          for (const name of nominees) {
+            const nameKey = normalizeCandidateName(name);
+            const docId = candidateDocId(positionKey, nameKey);
+            writes.push({ docId, data: {
+              name,
+              nameKey,
+              position,
+              positionKey,
+              image: avatarDataUri(name),
+              votes: 0,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            }});
+          }
+        }
+
+        for (let i = 0; i < writes.length; i += 400) {
+          const batch = db.batch();
+          const chunk = writes.slice(i, i + 400);
+          for (const w of chunk) {
+            const ref = db.collection('candidates').doc(w.docId);
+            batch.set(ref, w.data, { merge: false });
+          }
+          await batch.commit();
+        }
+
+        showToast('Official list applied. Voting data cleared.');
+        await refreshAll();
+      } catch (e) {
+        showToast(`Could not apply: ${safeErrorMessage(e)}`, 'error');
+      } finally {
+        setButtonLoading(applyOfficialBtn, false, 'Applying...', 'Apply Official List');
+      }
+    }
+
     async function addPosition() {
       const name = String(newPositionName.value || '').trim().replace(/\s+/g, ' ');
       if (!name) {
@@ -1103,6 +1177,7 @@
     openBtn.onclick = () => setElectionStatus('active');
     closeBtn.onclick = () => setElectionStatus('closed');
     resetBtn.onclick = () => resetElection();
+    if (applyOfficialBtn) applyOfficialBtn.onclick = () => applyOfficialSetup();
     addPositionBtn.onclick = () => addPosition();
     addCandidateBtn.onclick = () => addCandidate();
     if (restartVotingBtn) restartVotingBtn.onclick = () => restartVoting();
