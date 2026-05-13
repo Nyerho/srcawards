@@ -260,7 +260,7 @@ function renderCandidates(list) {
 
   candidates.forEach(candidate => {
     const card = document.createElement('div');
-    card.className = 'bg-white rounded-xl shadow p-6 text-center mciu-card transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg';
+    card.className = 'bg-white rounded-xl shadow p-6 text-center mciu-card';
     const image = candidate.image || avatarDataUri(candidate.name);
 
     card.innerHTML = `
@@ -465,7 +465,6 @@ window.submitVote = function () {
     const voteRef = db.collection('votes').doc(voteId);
     const legacyVoteId = `${safeMatric}_${position.replace(/[\/#?\[\]]/g, '_')}`;
     const legacyVoteRef = legacyVoteId === voteId ? null : db.collection('votes').doc(legacyVoteId);
-    const candidateRef = db.collection('candidates').doc(selectedCandidateId);
 
     try {
       await db.collection('voters').doc(safeDocId(matric)).set({
@@ -482,12 +481,6 @@ window.submitVote = function () {
       if (legacyVoteRef) {
         const legacyExisting = await tx.get(legacyVoteRef);
         if (legacyExisting.exists) throw new Error('ALREADY_VOTED');
-      }
-
-      const candidateSnap = await tx.get(candidateRef);
-      if (candidateSnap.exists) {
-        const currentVotes = candidateSnap.data()?.votes ?? 0;
-        tx.update(candidateRef, { votes: currentVotes + 1 });
       }
       tx.set(voteRef, {
         matric,
