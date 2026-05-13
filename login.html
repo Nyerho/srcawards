@@ -45,6 +45,12 @@
         class="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
     </div>
 
+    <div id="adminEmailWrap" class="hidden">
+      <label class="block text-sm font-medium text-gray-700 mb-1">Admin Email</label>
+      <input type="email" id="adminEmail" placeholder="admin@example.com"
+        class="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
+    </div>
+
     <!-- Password with eye toggle -->
     <div id="adminPasswordWrap" class="relative hidden">
       <label class="block text-sm font-medium text-gray-700 mb-1">Admin Password</label>
@@ -109,6 +115,8 @@ const voterMatricWrap = document.getElementById('voterMatricWrap');
 const infoRow = document.getElementById('infoRow');
 const modeVoterBtn = document.getElementById('modeVoterBtn');
 const modeAdminBtn = document.getElementById('modeAdminBtn');
+const adminEmailWrap = document.getElementById('adminEmailWrap');
+const adminEmailInput = document.getElementById('adminEmail');
 const adminPasswordWrap = document.getElementById('adminPasswordWrap');
 const passwordInput = document.getElementById('password');
 const togglePassword = document.getElementById('togglePassword');
@@ -121,9 +129,11 @@ function setMode(nextMode) {
   const isAdmin = loginMode === 'admin';
 
   if (voterMatricWrap) voterMatricWrap.classList.toggle('hidden', isAdmin);
+  if (adminEmailWrap) adminEmailWrap.classList.toggle('hidden', !isAdmin);
   if (adminPasswordWrap) adminPasswordWrap.classList.toggle('hidden', !isAdmin);
   if (infoRow) infoRow.classList.toggle('hidden', isAdmin);
   if (matricInput) matricInput.required = !isAdmin;
+  if (adminEmailInput) adminEmailInput.required = isAdmin;
 
   if (modeVoterBtn) {
     modeVoterBtn.classList.toggle('bg-primary', !isAdmin);
@@ -141,12 +151,14 @@ function setMode(nextMode) {
   submitBtn.innerText = isAdmin ? 'Login as Admin' : 'Login & Proceed';
 
   if (isAdmin) {
+    if (adminEmailInput && !adminEmailInput.value) adminEmailInput.value = ADMIN_EMAIL;
     if (passwordInput) passwordInput.focus();
   } else {
     if (passwordInput) {
       passwordInput.value = '';
       passwordInput.type = 'password';
     }
+    if (adminEmailInput) adminEmailInput.value = '';
     if (matricInput) matricInput.focus();
   }
 }
@@ -187,6 +199,7 @@ form.addEventListener('submit', e => {
   e.preventDefault();
 
   const matric = matricInput ? matricInput.value.trim() : '';
+  const adminEmail = String(adminEmailInput?.value || '').trim();
   const password = passwordInput.value.trim();
   submitBtn.disabled = true;
   submitBtn.classList.add('opacity-50', 'pointer-events-none');
@@ -199,6 +212,11 @@ form.addEventListener('submit', e => {
   /* ===== ADMIN ===== */
   if (loginMode === 'admin') {
     (async () => {
+      if (firebaseReady && !adminEmail) {
+        alert('Enter admin email');
+        resetSubmit();
+        return;
+      }
       if (!password) {
         alert('Enter admin password');
         resetSubmit();
@@ -220,7 +238,8 @@ form.addEventListener('submit', e => {
       }
 
       try {
-        const cred = await auth.signInWithEmailAndPassword(ADMIN_EMAIL, password);
+        const email = adminEmail || ADMIN_EMAIL;
+        const cred = await auth.signInWithEmailAndPassword(email, password);
         const uid = cred?.user?.uid || '';
         localStorage.setItem('currentUser', JSON.stringify({ matric: 'ADMIN', role: 'admin', uid }));
         navigate('admin.html');

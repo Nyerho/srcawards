@@ -1122,7 +1122,16 @@
       try {
         await deleteCollection('votes');
         await deleteCollection('voters');
+        try {
+          const legacyVotersSnap = await db.collection('voters').where('completedAt', '!=', null).limit(450).get();
+          if (!legacyVotersSnap.empty) {
+            const batch = db.batch();
+            legacyVotersSnap.docs.forEach(d => batch.update(d.ref, { completedAt: null }));
+            await batch.commit();
+          }
+        } catch {}
         await resetCandidateVotes();
+        try { localStorage.removeItem('localVotes_v1'); } catch {}
         showToast('Voting restarted (votes + voters cleared, candidate counts reset)');
         await Promise.allSettled([renderCandidates(), renderVoteRecords(), renderRegisteredVoters()]);
       } catch (e) {

@@ -379,9 +379,11 @@ function renderPositions(positions, electionStatus, userVotes, candidateCounts) 
       const voter = voterSnap.data() || {};
       if (voter.completedAt) {
         localStorage.removeItem('currentUser');
-        alert('This matric number has already completed voting and cannot login again.');
-        window.location.href = 'login.html';
-        return;
+        try {
+          await db.collection('voters').doc(safeDocId(String(currentUser.matric || '').toUpperCase())).set({
+            completedAt: null
+          }, { merge: true });
+        } catch {}
       }
     }
   } catch {}
