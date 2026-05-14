@@ -25,6 +25,11 @@ service cloud.firestore {
       return v is list && v.size() > 0 && v.size() <= 50 && v[0] is string;
     }
 
+    function electionActive() {
+      return exists(/databases/$(database)/documents/election/current) &&
+        get(/databases/$(database)/documents/election/current).data.status == 'active';
+    }
+
     match /election/current {
       allow read: if true;
       allow create, update, delete: if
@@ -98,6 +103,25 @@ service cloud.firestore {
 
       allow update: if false;
       allow delete: if isAdmin();
+    }
+
+    match /giveawayGuesses/{guessId} {
+      allow read: if isAdmin();
+
+      allow create: if
+        request.auth != null &&
+        electionActive() &&
+        guessId.matches('^[A-Za-z0-9_\\-]+$') &&
+        request.resource.data.keys().hasOnly(['matric', 'voterName', 'category', 'positionKey', 'guessName', 'createdAt']) &&
+        isNonEmptyString(request.resource.data.matric, 40) &&
+        request.resource.data.voterName is string &&
+        request.resource.data.voterName.size() <= 120 &&
+        isNonEmptyString(request.resource.data.category, 120) &&
+        isPositionKey(request.resource.data.positionKey) &&
+        isNonEmptyString(request.resource.data.guessName, 120) &&
+        request.resource.data.createdAt is timestamp;
+
+      allow update, delete: if isAdmin();
     }
 
     match /voters/{voterId} {

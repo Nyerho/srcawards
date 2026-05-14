@@ -60,6 +60,25 @@
       <button id="refreshLeaderboardBtn" class="border px-4 py-2 rounded w-full sm:w-auto">Refresh</button>
     </div>
     <div id="leaderboardBody" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+
+    <div class="mt-8 border-t pt-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div>
+          <h4 class="font-semibold text-lg">₦5,000 Giveaway</h4>
+          <p class="text-sm text-gray-500">First person to correctly guess any category winner wins.</p>
+        </div>
+        <div id="giveawayStatus" class="text-sm text-gray-600"></div>
+      </div>
+
+      <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <select id="giveawayCategory" class="w-full border px-3 py-2 rounded">
+          <option value="">Select category</option>
+        </select>
+        <input id="giveawayGuess" type="text" class="w-full border px-3 py-2 rounded" placeholder="Who do you think will win?">
+        <button id="submitGiveawayBtn" class="mciu-btn px-4 py-2 rounded w-full">Submit Guess</button>
+      </div>
+      <p class="mt-2 text-xs text-gray-500">One submission per matric number.</p>
+    </div>
   </div>
 
   <div class="bg-white rounded-2xl shadow p-8">
@@ -454,6 +473,181 @@ function renderLeaderboard(perPosition) {
   }).join('');
 }
 
+function loadLocalGiveawayGuess(matric) {
+  try {
+    const m = String(matric || '').trim().toUpperCase();
+    if (!m) return null;
+    const raw = localStorage.getItem('giveawayGuess_v1');
+    const obj = raw ? JSON.parse(raw) : null;
+    if (!obj) return null;
+    if (String(obj.matric || '').trim().toUpperCase() !== m) return null;
+    return obj;
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalGiveawayGuess(payload) {
+  try {
+    localStorage.setItem('giveawayGuess_v1', JSON.stringify(payload || {}));
+  } catch {}
+}
+
+function clearLocalGiveawayGuess() {
+  try { localStorage.removeItem('giveawayGuess_v1'); } catch {}
+}
+
+function setGiveawayUiState(state) {
+  const category = document.getElementById('giveawayCategory');
+  const guess = document.getElementById('giveawayGuess');
+  const btn = document.getElementById('submitGiveawayBtn');
+  const status = document.getElementById('giveawayStatus');
+  if (status) status.textContent = state?.statusText || '';
+  const disabled = !!state?.disabled;
+  if (category) category.disabled = disabled;
+  if (guess) guess.disabled = disabled;
+  if (btn) btn.disabled = disabled;
+  if (btn) {
+    btn.classList.toggle('opacity-50', disabled);
+    btn.classList.toggle('pointer-events-none', disabled);
+  }
+}
+
+async function loadGiveawayDoc(matric) {
+  if (!firebaseReady || !db) return null;
+  const id = safeDocId(String(matric || '').trim().toUpperCase());
+  if (!id) return null;
+  try {
+    const snap = await db.collection('giveawayGuesses').doc(id).get();
+    return snap.exists ? (snap.data() || {}) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function submitGiveawayGuess(matric, positions) {
+  const m = String(matric || '').trim().toUpperCase();
+  if (!m) throw new Error('MATRIC_REQUIRED');
+
+  const categoryEl = document.getElementById('giveawayCategory');
+  const guessEl = document.getElementById('giveawayGuess');
+  const category = String(categoryEl?.value || '').trim();
+  const guessName = String(guessEl?.value || '').trim().replace(/\s+/g, ' ');
+  if (!category) throw new Error('CATEGORY_REQUIRED');
+  if (!guessName) throw new Error('GUESS_REQUIRED');
+  if (guessName.length > 120) throw new Error('GUESS_TOO_LONG');
+
+  const list = Array.isArray(positions) && positions.length ? positions : defaultPositions;
+  const valid = list.some((p) => String(p).trim() === category);
+  if (!valid) throw new Error('CATEGORY_INVALID');
+
+  const payload = {
+    matric: m,
+    category,
+    positionKey: normalizePosition(category),
+    guessName,
+    createdAt: new Date().toISOString()
+  };
+  const name = String(currentUser?.name || '').trim().replace(/\s+/g, ' ');
+  if (name && name.length <= 120) payload.voterName = name;
+
+  saveLocalGiveawayGuess(payload);
+
+  await ensureAuthReady();
+  if (!firebaseReady || !db || !auth || !auth.currentUser) {
+    setGiveawayUiState({ disabled: true, statusText: 'Saved on this device. Submit will sync when online.' });
+    return;
+  }
+
+  const id = safeDocId(m);
+  const ref = db.collection('giveawayGuesses').doc(id);
+  const existing = await ref.get().catch(() => null);
+  if (existing && existing.exists) {
+    clearLocalGiveawayGuess();
+    setGiveawayUiState({ disabled: true, statusText: 'Guess already submitted.' });
+    return;
+  }
+
+  await ref.set({
+    matric: m,
+    voterName: payload.voterName || '',
+    category,
+    positionKey: payload.positionKey,
+    guessName,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+
+  clearLocalGiveawayGuess();
+  setGiveawayUiState({ disabled: true, statusText: 'Guess submitted.' });
+}
+
+async function syncGiveawayGuessIfNeeded(matric) {
+  const local = loadLocalGiveawayGuess(matric);
+  if (!local) return;
+  await ensureAuthReady();
+  if (!firebaseReady || !db || !auth || !auth.currentUser) return;
+
+  const m = String(local.matric || '').trim().toUpperCase();
+  const id = safeDocId(m);
+  if (!id) return;
+  try {
+    const ref = db.collection('giveawayGuesses').doc(id);
+    const existing = await ref.get();
+    if (existing.exists) {
+      clearLocalGiveawayGuess();
+      return;
+    }
+    await ref.set({
+      matric: m,
+      voterName: String(local.voterName || ''),
+      category: String(local.category || ''),
+      positionKey: String(local.positionKey || ''),
+      guessName: String(local.guessName || ''),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    clearLocalGiveawayGuess();
+  } catch {}
+}
+
+function initGiveawayUi(positions) {
+  const select = document.getElementById('giveawayCategory');
+  const btn = document.getElementById('submitGiveawayBtn');
+  if (!select || !btn) return;
+
+  const list = Array.isArray(positions) && positions.length ? positions : defaultPositions;
+  select.innerHTML = ['<option value="">Select category</option>']
+    .concat(list.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`))
+    .join('');
+
+  const local = loadLocalGiveawayGuess(currentUser?.matric);
+  const guessEl = document.getElementById('giveawayGuess');
+  if (local) {
+    try {
+      select.value = String(local.category || '');
+      if (guessEl) guessEl.value = String(local.guessName || '');
+      setGiveawayUiState({ disabled: false, statusText: 'Saved on this device. Will sync when online.' });
+    } catch {}
+  } else {
+    setGiveawayUiState({ disabled: false, statusText: '' });
+  }
+
+  btn.onclick = async () => {
+    btn.classList.add('opacity-50', 'pointer-events-none');
+    try {
+      await submitGiveawayGuess(currentUser?.matric, list);
+    } catch (e) {
+      const msg = String(e?.message || '');
+      if (msg === 'CATEGORY_REQUIRED') setGiveawayUiState({ disabled: false, statusText: 'Select a category.' });
+      else if (msg === 'GUESS_REQUIRED') setGiveawayUiState({ disabled: false, statusText: 'Enter your guess.' });
+      else if (msg === 'GUESS_TOO_LONG') setGiveawayUiState({ disabled: false, statusText: 'Guess is too long.' });
+      else if (msg === 'CATEGORY_INVALID') setGiveawayUiState({ disabled: false, statusText: 'Invalid category.' });
+      else setGiveawayUiState({ disabled: false, statusText: 'Could not submit. Try again.' });
+    } finally {
+      btn.classList.remove('opacity-50', 'pointer-events-none');
+    }
+  };
+}
+
 async function loadUserVotes(matric) {
   try {
     const snap = await db.collection('votes').where('matric', '==', matric).get();
@@ -647,6 +841,10 @@ function renderPositions(positions, electionStatus, userVotes, candidateCounts) 
     };
   }
   await loadLeaderboard(election.positions);
+  initGiveawayUi(election.positions);
+  await syncGiveawayGuessIfNeeded(currentUser?.matric);
+  const existingGuess = await loadGiveawayDoc(currentUser?.matric);
+  if (existingGuess) setGiveawayUiState({ disabled: true, statusText: 'Guess already submitted.' });
 
   const votedCount = Object.keys(mergedVotes || {}).length;
   const totalPositions = election.positions.length;
