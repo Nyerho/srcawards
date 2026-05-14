@@ -377,7 +377,7 @@ async function loadElection() {
 
 const LEADERBOARD_BASE_VOTES = 13;
 
-async function loadLeaderboard(positions) {
+async function loadLeaderboard(positions, localVotesMap, remoteVotesMap) {
   if (!firebaseReady || !db) return;
 
   const list = Array.isArray(positions) && positions.length ? positions : defaultPositions;
@@ -387,6 +387,9 @@ async function loadLeaderboard(positions) {
   })).filter((p) => p.position && p.key);
 
   if (!normalized.length) return;
+
+  const localMap = localVotesMap || {};
+  const remoteMap = remoteVotesMap || {};
 
   const perPosition = await Promise.all(normalized.map(async (p) => {
     let candidates = [];
@@ -420,16 +423,22 @@ async function loadLeaderboard(positions) {
       });
     } catch {}
 
+    const pendingCandidateId = localMap[p.key] ? String(localMap[p.key]).trim() : '';
+    const alreadyRemote = !!remoteMap[p.key];
+    if (pendingCandidateId && !alreadyRemote) {
+      counts[pendingCandidateId] = (counts[pendingCandidateId] || 0) + 1;
+    }
+
     const ranked = candidates.map((c) => {
-      const recorded = counts[c.id] || 0;
+      const effectiveVotes = counts[c.id] || 0;
       return {
         id: c.id,
         name: c.name || 'Unknown',
-        recordedVotes: recorded,
-        displayVotes: recorded + LEADERBOARD_BASE_VOTES
+        effectiveVotes,
+        displayVotes: effectiveVotes + LEADERBOARD_BASE_VOTES
       };
     }).sort((a, b) => {
-      if (b.recordedVotes !== a.recordedVotes) return b.recordedVotes - a.recordedVotes;
+      if (b.effectiveVotes !== a.effectiveVotes) return b.effectiveVotes - a.effectiveVotes;
       return a.name.localeCompare(b.name);
     }).slice(0, 3);
 
@@ -841,13 +850,13 @@ function renderPositions(positions, electionStatus, userVotes, candidateCounts) 
     refreshBtn.onclick = async () => {
       refreshBtn.classList.add('opacity-50', 'pointer-events-none');
       try {
-        await loadLeaderboard(election.positions);
+        await loadLeaderboard(election.positions, refreshedLocalVotes, remoteVotes);
       } finally {
         refreshBtn.classList.remove('opacity-50', 'pointer-events-none');
       }
     };
   }
-  await loadLeaderboard(election.positions);
+  await loadLeaderboard(election.positions, refreshedLocalVotes, remoteVotes);
   initGiveawayUi(election.positions);
   await syncGiveawayGuessIfNeeded(currentUser?.matric);
   const existingGuess = await loadGiveawayDoc(currentUser?.matric);
