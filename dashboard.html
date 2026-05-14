@@ -453,13 +453,20 @@ function renderLeaderboard(perPosition) {
 
   card.classList.remove('hidden');
   body.innerHTML = sections.map((p) => {
+    const max = Math.max(...p.ranked.map((c) => Number(c.displayVotes || 0)), 1);
     const rows = p.ranked.map((c, idx) => {
+      const pct = Math.max(6, Math.round((Number(c.displayVotes || 0) / max) * 100));
       return `
-        <div class="flex items-center justify-between gap-4 border rounded-lg px-4 py-3">
-          <div class="min-w-0">
-            <div class="font-medium truncate">${idx + 1}. ${escapeHtml(c.name)}</div>
+        <div class="border rounded-lg px-4 py-3">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-medium truncate">${idx + 1}. ${escapeHtml(c.name)}</div>
+            </div>
+            <div class="shrink-0 font-semibold text-primary">${c.displayVotes}</div>
           </div>
-          <div class="shrink-0 font-semibold text-primary">${c.displayVotes}</div>
+          <div class="mt-2 h-2.5 w-full rounded-full bg-gray-100 overflow-hidden">
+            <div class="h-full rounded-full" style="width:${pct}%;background:linear-gradient(90deg,#d4a017,#1e3a8a);"></div>
+          </div>
         </div>
       `;
     }).join('');
