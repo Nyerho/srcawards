@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SRC Student Week Awards 2026 Dashboard | Voting Portal</title>
 
-<link rel="stylesheet" href="tailwind.css?v=leaderboard-bars-1">
+<link rel="stylesheet" href="tailwind.css?v=giveaway-only-1">
 
 <style>
 .fade-in { animation: fadeIn 0.6s ease-in-out; }
@@ -51,34 +51,23 @@
     </div>
   </div>
 
-  <div id="leaderboardCard" class="hidden bg-white rounded-2xl shadow p-8 mb-12">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+  <div id="giveawayCard" class="bg-white rounded-2xl shadow p-8 mb-12">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
       <div>
-        <h3 class="text-xl font-semibold">Leaderboard</h3>
-        <p class="text-sm text-gray-500">Live standings by category.</p>
+        <h3 class="text-xl font-semibold">₦5,000 Giveaway</h3>
+        <p class="text-sm text-gray-500">First person to correctly guess any category winner wins.</p>
       </div>
-      <button id="refreshLeaderboardBtn" class="border px-4 py-2 rounded w-full sm:w-auto">Refresh</button>
+      <div id="giveawayStatus" class="text-sm text-gray-600"></div>
     </div>
-    <div id="leaderboardBody" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
 
-    <div class="mt-8 border-t pt-6">
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div>
-          <h4 class="font-semibold text-lg">₦5,000 Giveaway</h4>
-          <p class="text-sm text-gray-500">First person to correctly guess any category winner wins.</p>
-        </div>
-        <div id="giveawayStatus" class="text-sm text-gray-600"></div>
-      </div>
-
-      <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-        <select id="giveawayCategory" class="w-full border px-3 py-2 rounded">
-          <option value="">Select category</option>
-        </select>
-        <input id="giveawayGuess" type="text" class="w-full border px-3 py-2 rounded" placeholder="Who do you think will win?">
-        <button id="submitGiveawayBtn" class="mciu-btn px-4 py-2 rounded w-full">Submit Guess</button>
-      </div>
-      <p class="mt-2 text-xs text-gray-500">One submission per matric number.</p>
+    <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+      <select id="giveawayCategory" class="w-full border px-3 py-2 rounded">
+        <option value="">Select category</option>
+      </select>
+      <input id="giveawayGuess" type="text" class="w-full border px-3 py-2 rounded" placeholder="Who do you think will win?">
+      <button id="submitGiveawayBtn" class="mciu-btn px-4 py-2 rounded w-full">Submit Guess</button>
     </div>
+    <p class="mt-2 text-xs text-gray-500">One submission per matric number.</p>
   </div>
 
   <div class="bg-white rounded-2xl shadow p-8">
@@ -373,120 +362,6 @@ async function loadElection() {
   } catch {
     return { status: 'active', positions: defaultPositions };
   }
-}
-
-const LEADERBOARD_BASE_VOTES = 13;
-
-async function loadLeaderboard(positions, localVotesMap, remoteVotesMap) {
-  if (!firebaseReady || !db) return;
-
-  const list = Array.isArray(positions) && positions.length ? positions : defaultPositions;
-  const normalized = list.map((p) => ({
-    position: String(p || '').trim(),
-    key: normalizePosition(p)
-  })).filter((p) => p.position && p.key);
-
-  if (!normalized.length) return;
-
-  const localMap = localVotesMap || {};
-  const remoteMap = remoteVotesMap || {};
-
-  const perPosition = await Promise.all(normalized.map(async (p) => {
-    let candidates = [];
-    try {
-      const snap = await db.collection('candidates').where('positionKey', '==', p.key).get();
-      snap.forEach((d) => {
-        const c = d.data() || {};
-        candidates.push({
-          id: d.id,
-          name: String(c.name || '').trim(),
-        });
-      });
-    } catch {}
-
-    if (!candidates.length) {
-      const local = nomineesByPosition[p.position] || [];
-      candidates = local.map((name) => {
-        const nameKey = normalizeCandidateName(name);
-        return { id: candidateDocId(p.key, nameKey), name: String(name || '').trim() };
-      }).filter((c) => c.id && c.name);
-    }
-
-    const counts = {};
-    try {
-      const snap = await db.collection('votes').where('positionKey', '==', p.key).get();
-      snap.forEach((d) => {
-        const v = d.data() || {};
-        const cid = String(v.candidateId || '').trim();
-        if (!cid) return;
-        counts[cid] = (counts[cid] || 0) + 1;
-      });
-    } catch {}
-
-    const pendingCandidateId = localMap[p.key] ? String(localMap[p.key]).trim() : '';
-    const alreadyRemote = !!remoteMap[p.key];
-    if (pendingCandidateId && !alreadyRemote) {
-      counts[pendingCandidateId] = (counts[pendingCandidateId] || 0) + 1;
-    }
-
-    const ranked = candidates.map((c) => {
-      const effectiveVotes = counts[c.id] || 0;
-      return {
-        id: c.id,
-        name: c.name || 'Unknown',
-        effectiveVotes,
-        displayVotes: effectiveVotes + LEADERBOARD_BASE_VOTES
-      };
-    }).sort((a, b) => {
-      if (b.effectiveVotes !== a.effectiveVotes) return b.effectiveVotes - a.effectiveVotes;
-      return a.name.localeCompare(b.name);
-    }).slice(0, 3);
-
-    return { position: p.position, key: p.key, ranked };
-  }));
-
-  renderLeaderboard(perPosition);
-}
-
-function renderLeaderboard(perPosition) {
-  const card = document.getElementById('leaderboardCard');
-  const body = document.getElementById('leaderboardBody');
-  if (!card || !body) return;
-
-  const sections = (Array.isArray(perPosition) ? perPosition : []).filter((p) => Array.isArray(p.ranked) && p.ranked.length);
-  if (!sections.length) {
-    card.classList.add('hidden');
-    body.innerHTML = '';
-    return;
-  }
-
-  card.classList.remove('hidden');
-  body.innerHTML = sections.map((p) => {
-    const max = Math.max(...p.ranked.map((c) => Number(c.displayVotes || 0)), 1);
-    const rows = p.ranked.map((c, idx) => {
-      const pct = Math.max(6, Math.round((Number(c.displayVotes || 0) / max) * 100));
-      return `
-        <div class="border rounded-lg px-4 py-3">
-          <div class="flex items-center justify-between gap-3">
-            <div class="min-w-0">
-              <div class="font-medium truncate">${idx + 1}. ${escapeHtml(c.name)}</div>
-            </div>
-            <div class="shrink-0 font-semibold text-primary">${c.displayVotes}</div>
-          </div>
-          <div class="mt-2 h-2.5 w-full rounded-full bg-gray-100 overflow-hidden">
-            <div class="h-full rounded-full" style="width:${pct}%;background:linear-gradient(90deg,#d4a017,#1e3a8a);"></div>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    return `
-      <div class="border rounded-xl p-5">
-        <div class="font-semibold mb-3">${escapeHtml(p.position)}</div>
-        <div class="space-y-2">${rows}</div>
-      </div>
-    `;
-  }).join('');
 }
 
 function loadLocalGiveawayGuess(matric) {
@@ -844,19 +719,6 @@ function renderPositions(positions, electionStatus, userVotes, candidateCounts) 
     if (localCount) counts[key] = localCount;
   }
   renderPositions(election.positions, election.status, mergedVotes, counts);
-
-  const refreshBtn = document.getElementById('refreshLeaderboardBtn');
-  if (refreshBtn) {
-    refreshBtn.onclick = async () => {
-      refreshBtn.classList.add('opacity-50', 'pointer-events-none');
-      try {
-        await loadLeaderboard(election.positions, refreshedLocalVotes, remoteVotes);
-      } finally {
-        refreshBtn.classList.remove('opacity-50', 'pointer-events-none');
-      }
-    };
-  }
-  await loadLeaderboard(election.positions, refreshedLocalVotes, remoteVotes);
   initGiveawayUi(election.positions);
   await syncGiveawayGuessIfNeeded(currentUser?.matric);
   const existingGuess = await loadGiveawayDoc(currentUser?.matric);

@@ -98,6 +98,26 @@
 
       <hr class="my-6">
 
+      <h2 class="text-xl font-semibold mb-4">Giveaway Guesses</h2>
+      <p class="text-sm text-gray-600 mb-4">Submissions for the ₦5,000 giveaway.</p>
+      <div class="overflow-auto border rounded">
+        <table class="w-full text-sm min-w-max">
+          <thead class="bg-secondary text-left">
+            <tr>
+              <th class="p-3 whitespace-nowrap">Matric No</th>
+              <th class="p-3 whitespace-nowrap">Name</th>
+              <th class="p-3 whitespace-nowrap">Category</th>
+              <th class="p-3 whitespace-nowrap">Guess</th>
+              <th class="p-3 whitespace-nowrap">Submitted At</th>
+            </tr>
+          </thead>
+          <tbody id="giveawayTableBody"></tbody>
+        </table>
+      </div>
+      <button id="loadMoreGiveawayBtn" class="mt-3 w-full border py-2 rounded hidden">Load more guesses</button>
+
+      <hr class="my-6">
+
       <h2 class="text-xl font-semibold mb-4">Registered Voters</h2>
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <p class="text-sm text-gray-600">Delete fake/unverified voters or restart voting (clears votes + voters).</p>
@@ -210,6 +230,8 @@
     const candidateList = document.getElementById('candidateList');
     const votesTableBody = document.getElementById('votesTableBody');
     const loadMoreVotesBtn = document.getElementById('loadMoreVotesBtn');
+    const giveawayTableBody = document.getElementById('giveawayTableBody');
+    const loadMoreGiveawayBtn = document.getElementById('loadMoreGiveawayBtn');
     const votersTableBody = document.getElementById('votersTableBody');
     const restartVotingBtn = document.getElementById('restartVotingBtn');
     const restoreCandidatesBtn = document.getElementById('restoreCandidatesBtn');
@@ -1065,6 +1087,100 @@
       }
     }
 
+    async function renderGiveawayGuesses() {
+      let lastDoc = null;
+      let remoteDone = false;
+      const seen = new Set();
+
+      function appendRow(g, idHint) {
+        const id = String(idHint || '');
+        if (id && seen.has(id)) return;
+        if (id) seen.add(id);
+        const matric = g.matric || id || '';
+        const name = g.voterName || '';
+        const category = g.category || '';
+        const guessName = g.guessName || '';
+        const submittedAt = formatTimestamp(g.createdAt) || '';
+        const tr = document.createElement('tr');
+        tr.className = 'border-t';
+        tr.innerHTML = `
+          <td class="p-3 whitespace-nowrap">${matric}</td>
+          <td class="p-3 whitespace-nowrap">${name}</td>
+          <td class="p-3 whitespace-nowrap">${category}</td>
+          <td class="p-3 whitespace-nowrap">${guessName}</td>
+          <td class="p-3 whitespace-nowrap">${submittedAt}</td>
+        `;
+        giveawayTableBody.appendChild(tr);
+      }
+
+      function updateLoadMore() {
+        if (!loadMoreGiveawayBtn) return;
+        const shouldShow = firebaseReady && !remoteDone;
+        loadMoreGiveawayBtn.classList.toggle('hidden', !shouldShow);
+        loadMoreGiveawayBtn.disabled = !shouldShow;
+      }
+
+      async function loadRemotePage() {
+        if (!firebaseReady) return;
+        if (remoteDone) return;
+        let q = db.collection('giveawayGuesses').orderBy('createdAt', 'desc').limit(200);
+        if (lastDoc) q = q.startAfter(lastDoc);
+        const snap = await withTimeout(q.get(), 9000);
+        if (snap.empty) {
+          remoteDone = true;
+          updateLoadMore();
+          return;
+        }
+        lastDoc = snap.docs[snap.docs.length - 1];
+        snap.forEach(s => {
+          const g = s.data() || {};
+          appendRow(g, s.id);
+        });
+        if (snap.size < 200) remoteDone = true;
+        updateLoadMore();
+      }
+
+      giveawayTableBody.innerHTML = '';
+      if (!firebaseReady) {
+        const tr = document.createElement('tr');
+        tr.className = 'border-t';
+        tr.innerHTML = `<td class="p-3 text-gray-600" colspan="5">Firebase is not configured.</td>`;
+        giveawayTableBody.appendChild(tr);
+        updateLoadMore();
+        return;
+      }
+
+      try {
+        await loadRemotePage();
+        updateLoadMore();
+        if (giveawayTableBody.children.length === 0) {
+          const tr = document.createElement('tr');
+          tr.className = 'border-t';
+          tr.innerHTML = `<td class="p-3 text-gray-600" colspan="5">No giveaway guesses yet.</td>`;
+          giveawayTableBody.appendChild(tr);
+        }
+      } catch (e) {
+        updateLoadMore();
+        const tr = document.createElement('tr');
+        tr.className = 'border-t';
+        tr.innerHTML = `<td class="p-3 text-red-700" colspan="5">Could not load giveaway guesses: ${safeErrorMessage(e)}</td>`;
+        giveawayTableBody.appendChild(tr);
+      }
+
+      if (loadMoreGiveawayBtn) {
+        loadMoreGiveawayBtn.onclick = async () => {
+          setButtonLoading(loadMoreGiveawayBtn, true, 'Loading...', 'Load more guesses');
+          try {
+            await loadRemotePage();
+          } catch (e) {
+            showToast(`Could not load more guesses: ${safeErrorMessage(e)}`, 'error');
+          } finally {
+            setButtonLoading(loadMoreGiveawayBtn, false, 'Loading...', 'Load more guesses');
+          }
+        };
+      }
+    }
+
     async function renderRegisteredVoters() {
       votersTableBody.innerHTML = '';
       try {
@@ -1166,6 +1282,7 @@
           });
         candidateList.innerHTML = `<div class="text-sm text-gray-600">Firebase is not configured. Only local vote records are available.</div>`;
         votersTableBody.innerHTML = `<tr class="border-t"><td class="p-3 text-gray-600" colspan="5">Firebase is not configured.</td></tr>`;
+        giveawayTableBody.innerHTML = `<tr class="border-t"><td class="p-3 text-gray-600" colspan="5">Firebase is not configured.</td></tr>`;
         await renderVoteRecords();
         return;
       }
@@ -1179,6 +1296,7 @@
       Promise.allSettled([
         renderCandidates(),
         renderVoteRecords(),
+        renderGiveawayGuesses(),
         renderRegisteredVoters()
       ]).catch(() => {});
     }
