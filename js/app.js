@@ -72,9 +72,23 @@ async function loadElection() {
   return { status: data.status === 'closed' ? 'closed' : 'active', categories: Array.isArray(data.categories) && data.categories.length ? data.categories : Object.keys(fallbackNominees) };
 }
 async function loadNominees() {
-  if (!firebaseReady) return Object.entries(fallbackNominees).flatMap(([category, names]) => names.map(name => ({ id: `${safeId(category)}__${safeId(name)}`, name, category, votes: 0 })));
-  const snap = await db.collection('nominees').orderBy('category').get();
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const localManifest = async () => {
+    try {
+      const response = await fetch('data/official-nominees.json', { cache: 'no-store' });
+      if (!response.ok) throw new Error('manifest unavailable');
+      return await response.json();
+    } catch {
+      return Object.entries(fallbackNominees).flatMap(([category, names]) => names.map(name => ({ id: `${safeId(category)}__${safeId(name)}`, name, category, votes: 0 })));
+    }
+  };
+  if (!firebaseReady) return localManifest();
+  try {
+    const snap = await db.collection('nominees').orderBy('category').get();
+    if (snap.docs.length) return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.warn('Could not load Firestore nominees; using local manifest', error);
+  }
+  return localManifest();
 }
 function accountDetails() {
   return { name: APP.accountName, number: APP.accountNumber, bank: APP.bankName };
