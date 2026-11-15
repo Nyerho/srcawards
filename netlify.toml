@@ -9,7 +9,7 @@
 
 [[redirects]]
   from = "/vote"
-  to = "/vote.html?fresh=20261115"
+  to = "/vote-now.html?rev=20261115"
   status = 200
 
 [[redirects]]
@@ -25,6 +25,17 @@
 
 [[headers]]
   for = "/vote.html"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate, max-age=0"
+    Pragma = "no-cache"
+
+[[redirects]]
+  from = "/vote-now"
+  to = "/vote-now.html?rev=20261115"
+  status = 200
+
+[[headers]]
+  for = "/vote-now.html"
   [headers.values]
     Cache-Control = "no-store, no-cache, must-revalidate, max-age=0"
     Pragma = "no-cache"
