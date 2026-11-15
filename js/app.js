@@ -93,10 +93,27 @@ async function loadNominees() {
 function accountDetails() {
   return { name: APP.accountName, number: APP.accountNumber, bank: APP.bankName };
 }
-function requireAdmin() {
-  if (!firebaseReady || !auth?.currentUser) { window.location.href = 'login.html?admin=1'; return false; }
+function waitForAuthUser(timeoutMs = 7000) {
+  if (!firebaseReady || !auth) return Promise.resolve(null);
+  if (auth.currentUser) return Promise.resolve(auth.currentUser);
+  return new Promise(resolve => {
+    let settled = false;
+    let unsubscribe = null;
+    const finish = user => {
+      if (settled) return;
+      settled = true;
+      if (unsubscribe) unsubscribe();
+      resolve(user || null);
+    };
+    unsubscribe = auth.onAuthStateChanged(finish);
+    setTimeout(() => finish(auth.currentUser || null), timeoutMs);
+  });
+}
+async function requireAdmin() {
+  const user = await waitForAuthUser();
+  if (!user) { window.location.href = 'login.html?admin=1'; return false; }
   return true;
 }
 window.APP = APP;
 window.appState = { db: () => db, auth: () => auth, firebaseReady: () => firebaseReady };
-window.appUtils = { escapeHtml, normalize, safeId, avatarDataUri, showToast, formatDate, ensureAnonymousAuth, loadElection, loadNominees, accountDetails, requireAdmin };
+window.appUtils = { escapeHtml, normalize, safeId, avatarDataUri, showToast, formatDate, ensureAnonymousAuth, loadElection, loadNominees, accountDetails, waitForAuthUser, requireAdmin };
