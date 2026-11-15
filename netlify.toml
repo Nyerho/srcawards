@@ -9,10 +9,22 @@
 
 [[redirects]]
   from = "/vote"
-  to = "/vote.html"
+  to = "/vote.html?fresh=20261115"
   status = 200
 
 [[redirects]]
   from = "/admin.html"
   to = "/admin.html"
   status = 200
+
+[[headers]]
+  for = "/vote"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate, max-age=0"
+    Pragma = "no-cache"
+
+[[headers]]
+  for = "/vote.html"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate, max-age=0"
+    Pragma = "no-cache"
