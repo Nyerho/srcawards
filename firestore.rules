@@ -4,144 +4,39 @@ service cloud.firestore {
     function isAdmin() {
       return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
+    function validText(value, max) { return value is string && value.size() > 0 && value.size() <= max; }
 
-    function isNonEmptyString(v, maxLen) {
-      return v is string && v.size() > 0 && v.size() <= maxLen;
-    }
-
-    function isStatus(v) {
-      return v == 'active' || v == 'closed';
-    }
-
-    function isPositionKey(v) {
-      return v is string && v.size() > 0 && v.size() <= 80 && v.matches('^[a-z0-9 ]+$');
-    }
-
-    function isNameKey(v) {
-      return v is string && v.size() > 0 && v.size() <= 120;
-    }
-
-    function isPositionsList(v) {
-      return v is list && v.size() > 0 && v.size() <= 50 && v[0] is string;
-    }
-
-    function electionActive() {
-      return exists(/databases/$(database)/documents/election/current) &&
-        get(/databases/$(database)/documents/election/current).data.status == 'active';
-    }
-
-    match /election/current {
+    match /settings/event {
       allow read: if true;
-      allow create, update, delete: if
-        isAdmin() &&
-        request.resource.data.keys().hasOnly(['status', 'positions']) &&
-        isStatus(request.resource.data.status) &&
-        isPositionsList(request.resource.data.positions);
+      allow write: if isAdmin();
+    }
+
+    match /nominees/{nomineeId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     match /admins/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
-      allow create, update, delete: if false;
+      allow write: if false;
     }
 
-    match /candidates/{candidateId} {
-      allow read: if true;
-
-      allow create: if
-        isAdmin() &&
-        request.resource.data.keys().hasOnly(['name', 'nameKey', 'position', 'positionKey', 'image', 'votes', 'createdAt']) &&
-        isNonEmptyString(request.resource.data.name, 120) &&
-        isNameKey(request.resource.data.nameKey) &&
-        isNonEmptyString(request.resource.data.position, 120) &&
-        isPositionKey(request.resource.data.positionKey) &&
-        request.resource.data.image is string &&
-        request.resource.data.image.size() <= 900000 &&
-        request.resource.data.votes is number &&
-        request.resource.data.votes >= 0;
-
-      allow update: if
-        (
-          isAdmin() &&
-          request.resource.data.keys().hasOnly(['name', 'nameKey', 'position', 'positionKey', 'image', 'votes', 'createdAt']) &&
-          isNonEmptyString(request.resource.data.name, 120) &&
-          isNameKey(request.resource.data.nameKey) &&
-          isNonEmptyString(request.resource.data.position, 120) &&
-          isPositionKey(request.resource.data.positionKey) &&
-          request.resource.data.image is string &&
-          request.resource.data.image.size() <= 900000 &&
-          request.resource.data.votes is number &&
-          request.resource.data.votes >= 0
-        ) || (
-          request.resource.data.keys().hasOnly(['name', 'nameKey', 'position', 'positionKey', 'image', 'votes', 'createdAt']) &&
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['votes']) &&
-          request.resource.data.name == resource.data.name &&
-          request.resource.data.nameKey == resource.data.nameKey &&
-          request.resource.data.position == resource.data.position &&
-          request.resource.data.positionKey == resource.data.positionKey &&
-          request.resource.data.image == resource.data.image &&
-          request.resource.data.createdAt == resource.data.createdAt &&
-          request.resource.data.votes is number &&
-          request.resource.data.votes == resource.data.votes + 1
-        );
-
-      allow delete: if isAdmin();
-    }
-
-    match /votes/{voteId} {
-      allow read: if true;
-
-      allow create: if
-        request.resource.data.keys().hasOnly(['matric', 'voterName', 'position', 'positionKey', 'candidateId', 'candidateName', 'createdAt']) &&
-        isNonEmptyString(request.resource.data.matric, 40) &&
-        isNonEmptyString(request.resource.data.voterName, 120) &&
-        isNonEmptyString(request.resource.data.position, 120) &&
-        isPositionKey(request.resource.data.positionKey) &&
-        voteId.matches('^[^/]+$') &&
-        isNonEmptyString(request.resource.data.candidateId, 200) &&
-        request.resource.data.candidateName is string &&
-        request.resource.data.candidateName.size() <= 120;
-
-      allow update: if false;
-      allow delete: if isAdmin();
-    }
-
-    match /giveawayGuesses/{guessId} {
+    match /paymentSubmissions/{submissionId} {
+      allow create: if request.auth != null &&
+        request.resource.data.keys().hasOnly(['nomineeId','nomineeName','category','amount','voteUnits','fullName','phone','email','bank','senderName','paymentReference','status','createdAt']) &&
+        validText(request.resource.data.nomineeId, 160) &&
+        validText(request.resource.data.nomineeName, 160) &&
+        validText(request.resource.data.category, 80) &&
+        request.resource.data.amount is number && request.resource.data.amount >= 100 && request.resource.data.amount <= 10000000 &&
+        request.resource.data.voteUnits is number && request.resource.data.voteUnits >= 1 && request.resource.data.voteUnits <= 100000 &&
+        request.resource.data.amount == request.resource.data.voteUnits * 100 &&
+        validText(request.resource.data.fullName, 120) && validText(request.resource.data.phone, 40) &&
+        validText(request.resource.data.paymentReference, 120) && request.resource.data.status == 'pending';
       allow read: if isAdmin();
-
-      allow create: if
-        request.auth != null &&
-        electionActive() &&
-        guessId.matches('^[A-Za-z0-9_\\-]+$') &&
-        request.resource.data.keys().hasOnly(['matric', 'voterName', 'category', 'positionKey', 'guessName', 'createdAt']) &&
-        isNonEmptyString(request.resource.data.matric, 40) &&
-        request.resource.data.voterName is string &&
-        request.resource.data.voterName.size() <= 120 &&
-        isNonEmptyString(request.resource.data.category, 120) &&
-        isPositionKey(request.resource.data.positionKey) &&
-        isNonEmptyString(request.resource.data.guessName, 120) &&
-        request.resource.data.createdAt is timestamp;
-
-      allow update, delete: if isAdmin();
-    }
-
-    match /voters/{voterId} {
-      allow read: if true;
-
-      allow create, update: if
-        request.resource.data.keys().hasOnly(['matric', 'faculty', 'name', 'createdAt', 'lastLoginAt', 'completedAt']) &&
-        isNonEmptyString(request.resource.data.matric, 40) &&
-        voterId.matches('^[^/]+$') &&
-        isNonEmptyString(request.resource.data.faculty, 40) &&
-        (
-          !('name' in request.resource.data) ||
-          isNonEmptyString(request.resource.data.name, 120)
-        );
-
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    match /{document=**} { allow read, write: if false; }
   }
 }

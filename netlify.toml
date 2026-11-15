@@ -1,0 +1,18 @@
+[build]
+  command = "npm run build"
+  publish = "."
+
+[[redirects]]
+  from = "/admin"
+  to = "/login.html?admin=1"
+  status = 302
+
+[[redirects]]
+  from = "/vote"
+  to = "/vote.html"
+  status = 200
+
+[[redirects]]
+  from = "/admin.html"
+  to = "/admin.html"
+  status = 200
