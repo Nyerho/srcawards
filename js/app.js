@@ -31,6 +31,7 @@ try {
 const fallbackNominees = {
   'MR & MISS FRESH 2026': []
 };
+const fallbackNomineeRows = [{"name":"AKPOMIEMIE PRINCESS","category":"MR & MISS FRESH 2026","image":"images/nominees/akpomiemie-princess.jpeg","votes":0},{"name":"AKWENUKE JAINA .O.","category":"MR & MISS FRESH 2026","image":"images/nominees/akwenuke-jaina-o.jpeg","votes":0},{"name":"CHICO GLORY","category":"MR & MISS FRESH 2026","image":"images/nominees/chico-glory.jpeg","votes":0},{"name":"CHUKWU TEMPLE EBUKE","category":"MR & MISS FRESH 2026","image":"images/nominees/chukwu-temple-ebuke.jpeg","votes":0},{"name":"EYAMEKWARE DIVINE","category":"MR & MISS FRESH 2026","image":"images/nominees/eyamekware-divine.jpeg","votes":0},{"name":"MILTON PROSPER EBIMOBOWEI","category":"MR & MISS FRESH 2026","image":"images/nominees/milton-prosper-ebimobowei.jpeg","votes":0},{"name":"ODEGBUNE PEACE UFOUMA","category":"MR & MISS FRESH 2026","image":"images/nominees/odegbune-peace-ufouma.jpeg","votes":0},{"name":"OLOWOLABAYAKI ESTHER","category":"MR & MISS FRESH 2026","image":"images/nominees/olowolabayaki-esther.jpeg","votes":0},{"name":"OMOTE MIRACLE ELOGHENE","category":"MR & MISS FRESH 2026","image":"images/nominees/omote-miracle-eloghene.jpeg","votes":0},{"name":"ROWAYINOR MICHELLE","category":"MR & MISS FRESH 2026","image":"images/nominees/rowayinor-michelle.jpeg","votes":0},{"name":"TIJANI OLUWATOYIN PRAISE","category":"MR & MISS FRESH 2026","image":"images/nominees/tijani-oluwatoyin-praise.jpeg","votes":0}];
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -76,9 +77,14 @@ async function loadNominees() {
     try {
       const response = await fetch('data/official-nominees.json', { cache: 'no-store' });
       if (!response.ok) throw new Error('manifest unavailable');
-      return await response.json();
+      const rows = await response.json();
+      return rows.map(row => ({
+        ...row,
+        id: row.id || `${safeId(row.category)}__${safeId(row.name)}`,
+        votes: Number(row.votes || 0)
+      }));
     } catch {
-      return Object.entries(fallbackNominees).flatMap(([category, names]) => names.map(name => ({ id: `${safeId(category)}__${safeId(name)}`, name, category, votes: 0 })));
+      return fallbackNomineeRows.map(row => ({ ...row, id: `${safeId(row.category)}__${safeId(row.name)}`, votes: Number(row.votes || 0) }));
     }
   };
   if (!firebaseReady) return localManifest();
