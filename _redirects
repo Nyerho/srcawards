@@ -1,0 +1,6 @@
+/admin /login.html?admin=1 302
+/vote /vote-now.html?rev=20261115 200
+/vote-now /vote-now.html?rev=20261115 200
+/admin.html /admin.html 200
+
+/* /index.html 200

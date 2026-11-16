@@ -29,3 +29,37 @@ The payment account is centralized in `js/app.js`: **Miebai Joy Oyindobra · 652
 Use Firebase Authentication with Email/Password. Create an admin user with the email `admin@freshersnight2026.com` and a strong password you choose, then create `admins/{USER_UID}` in Firestore. The password is intentionally not stored in this repository.
 
 The uploaded photo manifest is in `data/official-nominees.json`. All photos are intentionally in one combined `MR & MISS FRESH 2026` pool so voters can identify the nominees from the photos without forced gender labels.
+
+## Cloudflare Pages deployment
+
+This is a static Firebase-backed site and is ready for Cloudflare Pages. Firebase remains the backend for Authentication, Firestore, payment submissions, nominee records, and vote approval; Cloudflare Pages only serves the frontend files.
+
+### Cloudflare Pages dashboard settings
+
+1. Push this repository to GitHub and open **Workers & Pages → Create application → Pages → Connect to Git**.
+2. Select `Nyerho/srcawards` and the `main` branch.
+3. Use these build settings:
+
+   - **Framework preset:** None
+   - **Build command:** `npm run build`
+   - **Build output directory:** `.`
+   - **Root directory:** `/`
+   - **Node version:** `20` (set `NODE_VERSION=20` in Environment variables if the dashboard requests it)
+
+4. Deploy the site.
+5. In Firebase Console, add the Cloudflare Pages hostname to **Authentication → Settings → Authorized domains**.
+6. Confirm `firebase-config.js` points to the intended Firebase project and deploy the contents of `firestore.rules` in Firestore Database → Rules.
+
+The repository includes `_redirects` and `_headers` for Cloudflare Pages. They provide the `/vote`, `/vote-now`, and `/admin` routes, prevent stale admin/voter HTML from being cached, and add basic security headers.
+
+### Optional CLI deployment
+
+After authenticating Wrangler with `npx wrangler login`, run:
+
+```bash
+npm install
+npm run build
+npx wrangler pages deploy . --project-name freshers-night-2026
+```
+
+Do not commit Cloudflare API tokens. The included `wrangler.toml` only identifies the Pages project and output directory.
