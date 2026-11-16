@@ -67,10 +67,16 @@ async function ensureAnonymousAuth() {
   return auth.currentUser || null;
 }
 async function loadElection() {
-  if (!firebaseReady) return { status: 'active', categories: Object.keys(fallbackNominees) };
-  const snap = await db.collection('settings').doc('event').get();
-  const data = snap.exists ? snap.data() : {};
-  return { status: data.status === 'closed' ? 'closed' : 'active', categories: Array.isArray(data.categories) && data.categories.length ? data.categories : Object.keys(fallbackNominees) };
+  const defaultElection = { status: 'active', categories: Object.keys(fallbackNominees) };
+  if (!firebaseReady) return defaultElection;
+  try {
+    const snap = await db.collection('settings').doc('event').get();
+    const data = snap.exists ? snap.data() : {};
+    return { status: data.status === 'closed' ? 'closed' : 'active', categories: Array.isArray(data.categories) && data.categories.length ? data.categories : Object.keys(fallbackNominees) };
+  } catch (error) {
+    console.warn('Could not read event settings; keeping voting open from site defaults', error);
+    return defaultElection;
+  }
 }
 async function loadNominees() {
   const localManifest = async () => {
