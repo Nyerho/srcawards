@@ -1,3 +1,1 @@
-/admin /login.html?admin=1 302
-/vote /vote-now.html 302
-/vote-now /vote-now.html 302
+/admin /login?admin=1 302
