@@ -23,7 +23,7 @@ service cloud.firestore {
 
     match /paymentSubmissions/{submissionId} {
       allow create: if request.auth != null &&
-        request.resource.data.keys().hasOnly(['nomineeId','nomineeName','category','amount','voteUnits','fullName','phone','email','bank','senderName','paymentReference','status','createdAt']) &&
+        request.resource.data.keys().hasOnly(['nomineeId','nomineeName','nomineeImage','category','amount','voteUnits','fullName','phone','email','bank','senderName','paymentReference','status','createdAt']) &&
         validText(request.resource.data.nomineeId, 160) &&
         validText(request.resource.data.nomineeName, 160) &&
         validText(request.resource.data.category, 80) &&
