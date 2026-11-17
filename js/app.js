@@ -31,7 +31,7 @@ try {
 const fallbackNominees = {
   'MR & MISS FRESH 2026': []
 };
-const fallbackNomineeRows = [{"name":"AKPOMIEMIE PRINCESS","category":"MR & MISS FRESH 2026","image":"images/nominees/akpomiemie-princess.jpeg","votes":0},{"name":"AKWENUKE JAINA .O.","category":"MR & MISS FRESH 2026","image":"images/nominees/akwenuke-jaina-o.jpeg","votes":0},{"name":"CHICO GLORY","category":"MR & MISS FRESH 2026","image":"images/nominees/chico-glory.jpeg","votes":0},{"name":"CHUKWU TEMPLE EBUKE","category":"MR & MISS FRESH 2026","image":"images/nominees/chukwu-temple-ebuke.jpeg","votes":0},{"name":"EYAMEKWARE DIVINE","category":"MR & MISS FRESH 2026","image":"images/nominees/eyamekware-divine.jpeg","votes":0},{"name":"MILTON PROSPER EBIMOBOWEI","category":"MR & MISS FRESH 2026","image":"images/nominees/milton-prosper-ebimobowei.jpeg","votes":0},{"name":"ODEGBUNE PEACE UFOUMA","category":"MR & MISS FRESH 2026","image":"images/nominees/odegbune-peace-ufouma.jpeg","votes":0},{"name":"OLOWOLABAYAKI ESTHER","category":"MR & MISS FRESH 2026","image":"images/nominees/olowolabayaki-esther.jpeg","votes":0},{"name":"OMOTE MIRACLE ELOGHENE","category":"MR & MISS FRESH 2026","image":"images/nominees/omote-miracle-eloghene.jpeg","votes":0},{"name":"ROWAYINOR MICHELLE","category":"MR & MISS FRESH 2026","image":"images/nominees/rowayinor-michelle.jpeg","votes":0},{"name":"TIJANI OLUWATOYIN PRAISE","category":"MR & MISS FRESH 2026","image":"images/nominees/tijani-oluwatoyin-praise.jpeg","votes":0}];
+const fallbackNomineeRows = [{"name":"AKPOMIEMIE PRINCESS","category":"MR & MISS FRESH 2026","image":"images/nominees/akpomiemie-princess.jpeg","votes":0},{"name":"AKWENUKE JAINA .O.","category":"MR & MISS FRESH 2026","image":"images/nominees/akwenuke-jaina-o.jpeg","votes":0},{"name":"CHICO GLORY","category":"MR & MISS FRESH 2026","image":"images/nominees/chico-glory.jpeg","votes":0},{"name":"CHUKWU TEMPLE EBUKE","category":"MR & MISS FRESH 2026","image":"images/nominees/chukwu-temple-ebuke.jpeg","votes":0},{"name":"EYAMEKWARE DIVINE","category":"MR & MISS FRESH 2026","image":"images/nominees/eyamekware-divine.jpeg","votes":0},{"name":"MILTON PROSPER EBIMOBOWEI","category":"MR & MISS FRESH 2026","image":"images/nominees/milton-prosper-ebimobowei.jpeg","votes":0},{"name":"ODEGBUNE PEACE UFOUMA","category":"MR & MISS FRESH 2026","image":"images/nominees/odegbune-peace-ufouma.jpeg","votes":0},{"name":"OLOWOLABAYAKI ESTHER","category":"MR & MISS FRESH 2026","image":"images/nominees/olowolabayaki-esther.jpeg","votes":0},{"name":"OMOTE MIRACLE ELOGHENE","category":"MR & MISS FRESH 2026","image":"images/nominees/omote-miracle-eloghene.jpeg","votes":0},{"name":"ROWAYINOR MICHELLE","category":"MR & MISS FRESH 2026","image":"images/nominees/rowayinor-michelle.jpeg","votes":0},{"name":"TIJANI OLUWATOYIN PRAISE","category":"MR & MISS FRESH 2026","image":"images/nominees/tijani-oluwatoyin-praise.jpeg","votes":0},{"name":"IMOYI ONANEFE EXALTED","category":"MR & MISS FRESH 2026","image":"images/nominees/imoyi-onanefe-exalted.jpeg","votes":0}];
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -96,7 +96,15 @@ async function loadNominees() {
   if (!firebaseReady) return localManifest();
   try {
     const snap = await db.collection('nominees').orderBy('category').get();
-    if (snap.docs.length) return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    if (snap.docs.length) {
+      const merged = new Map((await localManifest()).map(row => [row.id, row]));
+      snap.docs.forEach(doc => {
+        const local = merged.get(doc.id) || {};
+        const data = doc.data();
+        merged.set(doc.id, { ...local, ...data, id: doc.id, image: data.image || local.image || '' });
+      });
+      return Array.from(merged.values()).sort((a, b) => String(a.category || '').localeCompare(String(b.category || '')) || String(a.name || '').localeCompare(String(b.name || '')));
+    }
   } catch (error) {
     console.warn('Could not load Firestore nominees; using local manifest', error);
   }
